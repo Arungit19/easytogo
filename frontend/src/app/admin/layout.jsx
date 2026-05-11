@@ -5,14 +5,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
 const navItems = [
-  { href: "/admin",           label: "Dashboard", icon: "📊" },
-  { href: "/admin/bookings",  label: "Bookings",  icon: "📋" },
-  { href: "/admin/customers", label: "Customers", icon: "👥" },
-  { href: "/admin/workers",   label: "Workers",   icon: "👷" }, // ← NEW
-  { href: "/admin/Quotes",    label: "Quotes",    icon: "💬" },
-  { href: "/admin/payments",  label: "Payments",  icon: "💳" },
-  { href: "/admin/services",  label: "Services",  icon: "🛠️" },
-  { href: "/admin/settings",  label: "Settings",  icon: "⚙️" },
+  { href: "/admin",            label: "Dashboard", icon: "📊" },
+  { href: "/admin/bookings",   label: "Bookings",  icon: "📋" },
+  { href: "/admin/customers",  label: "Customers", icon: "👥" },
+  { href: "/admin/workers",    label: "Workers",   icon: "👷" },
+  { href: "/admin/Quotes",     label: "Quotes",    icon: "💬" },
+  { href: "/admin/payments",   label: "Payments",  icon: "💳" },
+  { href: "/admin/services",   label: "Services",  icon: "🛠️" },
+  { href: "/admin/tracking",   label: "Tracking",  icon: "🗺️" }, // ← NEW
+  { href: "/admin/settings",   label: "Settings",  icon: "⚙️" },
 ];
 
 const NAVBAR_HEIGHT = 64;
@@ -23,7 +24,7 @@ export default function AdminLayout({ children }) {
   const [collapsed, setCollapsed] = useState(false);
   const [admin, setAdmin]         = useState(null);
   const [checking, setChecking]   = useState(true);
-  const [pendingWorkers, setPendingWorkers] = useState(0); // ← NEW
+  const [pendingWorkers, setPendingWorkers] = useState(0);
 
   // ── Auth guard ──
   useEffect(() => {
@@ -56,7 +57,6 @@ export default function AdminLayout({ children }) {
       } catch { /* silent */ }
     };
     fetchPendingCount();
-    // Re-check every 60s
     const interval = setInterval(fetchPendingCount, 60000);
     return () => clearInterval(interval);
   }, []);
@@ -126,7 +126,7 @@ export default function AdminLayout({ children }) {
             const active =
               pathname === item.href ||
               (item.href !== "/admin" && pathname.startsWith(item.href));
-            const isWorkers = item.href === "/admin/worker";
+            const isWorkers = item.href === "/admin/workers";
             return (
               <Link
                 key={item.href}

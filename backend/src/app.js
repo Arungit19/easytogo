@@ -5,10 +5,11 @@ const passport  = require("passport");
 const session   = require("express-session");
 require("dotenv").config();
 
-const authRoutes    = require("./routes/authRoutes");
-const userRoutes    = require("./routes/userRoutes");
-const bookingRoutes = require("./routes/bookingRoutes");
-const workerRoutes  = require("./routes/workerRoutes"); // ← new
+const authRoutes     = require("./routes/authRoutes");
+const userRoutes     = require("./routes/userRoutes");
+const bookingRoutes  = require("./routes/bookingRoutes");
+const workerRoutes   = require("./routes/workerRoutes");
+const trackingRoutes = require("./routes/trackingRoutes"); // ← new
 
 const app = express();
 
@@ -37,7 +38,8 @@ app.use(passport.session());
 app.use("/api/auth",     authRoutes);
 app.use("/api/users",    userRoutes);
 app.use("/api/bookings", bookingRoutes);
-app.use("/api/worker",   workerRoutes); // ← new
+app.use("/api/worker",   workerRoutes);
+app.use("/api/tracking", trackingRoutes); // ← new
 
 // ── Health ────────────────────────────────────────────────────────
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));

@@ -54,6 +54,9 @@ export default function PackingUnpackingPage() {
   const [bookingData, setBookingData]     = useState(null);
   const [paymentDone, setPaymentDone]     = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  // "online" | "cod" | null
+  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [codLoading, setCodLoading]       = useState(false);
 
   const handleSubmit = async () => {
     setError("");
@@ -78,7 +81,7 @@ export default function PackingUnpackingPage() {
         body: JSON.stringify({
           city,
           address,
-          service_type:   serviceType,   // ← snake_case for API
+          service_type:   serviceType,
           property_type:  propertyType,
           preferred_date: preferredDate,
           time_slot:      timeSlot,
@@ -152,6 +155,7 @@ export default function PackingUnpackingPage() {
           });
           const vData = await vRes.json();
           if (vData.success) {
+            setPaymentMethod("online");
             setPaymentDone(true);
           } else {
             alert("❌ Payment verification failed. Please contact support.");
@@ -169,6 +173,46 @@ export default function PackingUnpackingPage() {
       setPaymentLoading(false);
     }
   };
+
+  // ── Cash on Delivery handler ──────────────────────────────────────────────
+  const handleCOD = async () => {
+    setCodLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+
+      const res = await fetch("/api/payments/cod", {
+        method:  "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          booking_id:     bookingData?.bookingId,
+          amount:         799,
+          service:        "Packing & Unpacking",
+          customer_name:  bookingData?.customerName,
+          customer_email: bookingData?.customerEmail,
+          customer_phone: bookingData?.customerPhone,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || "Could not confirm COD. Please try again.");
+        return;
+      }
+
+      setPaymentMethod("cod");
+      setPaymentDone(true);
+
+    } catch (err) {
+      alert("Network error: " + err.message);
+    } finally {
+      setCodLoading(false);
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   const summaryRows = [
     { label: "City",      value: city },
@@ -215,6 +259,7 @@ export default function PackingUnpackingPage() {
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@700;800&display=swap');
           .check-btn:hover { background: #1d5ed8 !important; transform: translateY(-1px); }
           .pay-btn:hover   { background: #16a34a !important; transform: translateY(-1px); }
+          .cod-btn:hover   { background: #b45309 !important; transform: translateY(-1px); }
           .service-card:hover, .info-card:hover {
             transform: translateY(-4px);
             border-color: rgba(72,141,255,0.45) !important;
@@ -233,6 +278,8 @@ export default function PackingUnpackingPage() {
             from { stroke-dashoffset: 60; }
             to   { stroke-dashoffset: 0; }
           }
+          .payment-tab { transition: all 0.2s; }
+          .payment-tab:hover { opacity: 0.85; }
           @media (max-width: 980px) {
             .hero { flex-direction: column !important; align-items: stretch !important; }
             .hero-text { text-align: center; }
@@ -247,6 +294,7 @@ export default function PackingUnpackingPage() {
             .stats-row { gap: 18px !important; }
             .time-grid { grid-template-columns: 1fr 1fr !important; }
             .svc-grid  { grid-template-columns: 1fr !important; }
+            .payment-methods { grid-template-columns: 1fr !important; }
           }
         `}</style>
 
@@ -284,10 +332,8 @@ export default function PackingUnpackingPage() {
             <div className="stats-row flex gap-7 flex-wrap">
               {STATS.map((s) => (
                 <div key={s.label}>
-                  <div
-                    className="font-['Sora',sans-serif] text-[22px] font-extrabold"
-                    style={{ color: "var(--foreground)" }}
-                  >
+                  <div className="font-['Sora',sans-serif] text-[22px] font-extrabold"
+                    style={{ color: "var(--foreground)" }}>
                     {s.value}
                   </div>
                   <div className="text-[12px] mt-[3px]" style={{ color: "var(--nav-text-muted)" }}>
@@ -345,7 +391,9 @@ export default function PackingUnpackingPage() {
                 </p>
               </div>
 
+              {/* ── Payment Section ─────────────────────────────── */}
               {paymentDone ? (
+                /* Confirmed state */
                 <div
                   className="w-full rounded-2xl px-4 py-3 text-center text-sm font-bold mb-4"
                   style={{
@@ -354,28 +402,107 @@ export default function PackingUnpackingPage() {
                     border: "1px solid rgba(34,197,94,0.3)",
                   }}
                 >
-                  ✅ Payment Successful! Booking confirmed.
+                  {paymentMethod === "cod"
+                    ? "✅ Cash on Delivery confirmed! Pay ₹799 when our team arrives."
+                    : "✅ Payment Successful! Booking confirmed."}
                 </div>
               ) : (
-                <button
-                  onClick={handlePayment}
-                  disabled={paymentLoading}
-                  className="pay-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: "#22c55e" }}
-                >
-                  {paymentLoading ? "Opening Payment..." : "💳 Pay Now — ₹799"}
-                </button>
+                <>
+                  {/* Payment method label */}
+                  <p className="text-[12px] font-semibold mb-3 text-left"
+                    style={{ color: "var(--nav-text-muted)" }}>
+                    Choose Payment Method
+                  </p>
+
+                  {/* Tab selector */}
+                  <div className="payment-methods grid grid-cols-2 gap-3 mb-4">
+                    {/* Online Tab */}
+                    <button
+                      onClick={() => setPaymentMethod("online")}
+                      className="payment-tab rounded-2xl py-3 px-3 text-[12px] font-bold cursor-pointer border-2 flex flex-col items-center gap-1"
+                      style={{
+                        backgroundColor: paymentMethod === "online" ? "rgba(47,110,255,0.08)" : "var(--background)",
+                        borderColor: paymentMethod === "online" ? "rgba(72,141,255,0.6)" : "var(--border-color)",
+                        color: paymentMethod === "online" ? "#2979d4" : "var(--nav-text-muted)",
+                      }}
+                    >
+                      <span className="text-[20px]">💳</span>
+                      <span>Pay Online</span>
+                      <span className="font-normal text-[10px]">UPI / Card / Net Banking</span>
+                    </button>
+
+                    {/* COD Tab */}
+                    <button
+                      onClick={() => setPaymentMethod("cod")}
+                      className="payment-tab rounded-2xl py-3 px-3 text-[12px] font-bold cursor-pointer border-2 flex flex-col items-center gap-1"
+                      style={{
+                        backgroundColor: paymentMethod === "cod" ? "rgba(245,158,11,0.08)" : "var(--background)",
+                        borderColor: paymentMethod === "cod" ? "rgba(245,158,11,0.6)" : "var(--border-color)",
+                        color: paymentMethod === "cod" ? "#b45309" : "var(--nav-text-muted)",
+                      }}
+                    >
+                      <span className="text-[20px]">💵</span>
+                      <span>Cash on Delivery</span>
+                      <span className="font-normal text-[10px]">Pay when team arrives</span>
+                    </button>
+                  </div>
+
+                  {/* Action button based on selection */}
+                  {paymentMethod === "online" && (
+                    <button
+                      onClick={handlePayment}
+                      disabled={paymentLoading}
+                      className="pay-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: "#22c55e" }}
+                    >
+                      {paymentLoading ? "Opening Payment..." : "💳 Pay Now — ₹799"}
+                    </button>
+                  )}
+
+                  {paymentMethod === "cod" && (
+                    <>
+                      {/* COD info note */}
+                      <div
+                        className="w-full rounded-2xl px-4 py-3 text-[12px] mb-3 text-left"
+                        style={{
+                          backgroundColor: "rgba(245,158,11,0.08)",
+                          border: "1px solid rgba(245,158,11,0.25)",
+                          color: "#92400e",
+                        }}
+                      >
+                        <p className="font-bold mb-1">📌 Cash on Delivery — ₹799</p>
+                        <p className="leading-[1.6]">
+                          Pay in cash to our packing team when they arrive at your location.
+                          Please keep the exact amount ready.
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleCOD}
+                        disabled={codLoading}
+                        className="cod-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{ backgroundColor: "#d97706" }}
+                      >
+                        {codLoading ? "Confirming..." : "✅ Confirm Cash on Delivery"}
+                      </button>
+                    </>
+                  )}
+
+                  {!paymentMethod && (
+                    <p className="text-[11px] mb-3 text-center" style={{ color: "var(--nav-text-muted)" }}>
+                      ↑ Select a payment method above to proceed
+                    </p>
+                  )}
+                </>
               )}
+              {/* ─────────────────────────────────────────────────── */}
 
               {/* Booking Summary */}
               <div
                 className="rounded-2xl p-4 mb-5"
                 style={{ backgroundColor: "var(--background)", border: "1px solid var(--border-color)" }}
               >
-                <div
-                  className="text-[11px] font-bold tracking-[2px] uppercase mb-3"
-                  style={{ color: "#4f8fff" }}
-                >
+                <div className="text-[11px] font-bold tracking-[2px] uppercase mb-3"
+                  style={{ color: "#4f8fff" }}>
                   Booking Summary
                 </div>
                 <div className="flex flex-col gap-[10px]">
@@ -511,10 +638,7 @@ export default function PackingUnpackingPage() {
                     key={value}
                     type="button"
                     onClick={() => setTimeSlot(value)}
-                    style={{
-                      ...chipStyle(timeSlot === value),
-                      padding: "10px 8px",
-                    }}
+                    style={{ ...chipStyle(timeSlot === value), padding: "10px 8px" }}
                   >
                     <div style={{ fontSize: 11, marginBottom: 2, color: timeSlot === value ? "#2f6eff" : "var(--nav-text-muted)" }}>
                       {label}
@@ -547,10 +671,8 @@ export default function PackingUnpackingPage() {
         </section>
 
         {/* ── WHY US ── */}
-        <section
-          className="px-[5%] pt-7 pb-20"
-          style={{ borderTop: "1px solid var(--border-color)" }}
-        >
+        <section className="px-[5%] pt-7 pb-20"
+          style={{ borderTop: "1px solid var(--border-color)" }}>
           <div className="why-inner max-w-[1280px] mx-auto flex gap-[60px] items-center">
             <div className="flex-1">
               <span className="text-[12px] text-[#4f8fff] font-bold tracking-[3px] uppercase">Why Us</span>
@@ -573,11 +695,8 @@ export default function PackingUnpackingPage() {
                 { icon: "👷", title: "Trained Crew",        desc: "Experienced staff for careful handling and organized packing." },
                 { icon: "⚡", title: "Same-Day Unpacking", desc: "Quick unpacking support to settle faster in your new place." },
               ].map((f, i) => (
-                <div
-                  key={i}
-                  className="info-card rounded-[18px] p-5 transition-all duration-[250ms]"
-                  style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-color)" }}
-                >
+                <div key={i} className="info-card rounded-[18px] p-5 transition-all duration-[250ms]"
+                  style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-color)" }}>
                   <div className="text-[26px] mb-[10px]">{f.icon}</div>
                   <div className="font-bold text-[15px] mb-[6px]" style={{ color: "var(--foreground)" }}>{f.title}</div>
                   <div className="text-[13px] leading-[1.7]" style={{ color: "var(--nav-text-muted)" }}>{f.desc}</div>

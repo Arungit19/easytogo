@@ -190,7 +190,7 @@ export default function BookingsPage() {
                   <tr
                     key={i}
                     style={{ borderBottom: "1px solid var(--border-color)" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(41,121,212,0.05)")}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(1, 36, 75, 0.05)")}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                   >
                     <td className="px-5 py-4 font-mono text-xs" style={{ color: "#2979d4" }}>{b.ref}</td>

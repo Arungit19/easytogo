@@ -51,6 +51,42 @@ const initDB = async () => {
       );
     `);
 
+    // initDB ke andar, existing CREATE TABLE ke baad add karo:
+
+// 1. Workers table
+await client.query(`
+  CREATE TABLE IF NOT EXISTS workers (
+    id               SERIAL PRIMARY KEY,
+    name             VARCHAR(150) NOT NULL,
+    email            VARCHAR(200) NOT NULL UNIQUE,
+    phone            VARCHAR(15)  NOT NULL,
+    password         TEXT         NOT NULL,
+    service_category VARCHAR(100) NOT NULL,
+    city             VARCHAR(100) NOT NULL,
+    avail_from       VARCHAR(10)  DEFAULT '09:00',
+    avail_to         VARCHAR(10)  DEFAULT '18:00',
+    status           VARCHAR(20)  DEFAULT 'pending',
+    is_active        BOOLEAN      DEFAULT true,   -- ← LOGIN FIX
+    total_jobs       INTEGER      DEFAULT 0,
+    rating           NUMERIC(3,2) DEFAULT 0,
+    created_at       TIMESTAMPTZ  DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ  DEFAULT NOW()
+  );
+`);
+
+// 2. Worker bookings junction table
+await client.query(`
+  CREATE TABLE IF NOT EXISTS worker_bookings (
+    id          SERIAL PRIMARY KEY,
+    worker_id   INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+    booking_id  INTEGER NOT NULL,
+    service     VARCHAR(100),
+    action      VARCHAR(20) DEFAULT 'accepted',
+    assigned_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(worker_id, booking_id)
+  );
+`);
+
     const hash = await bcrypt.hash("admin@123", 10);
 
     await client.query(

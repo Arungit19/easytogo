@@ -29,7 +29,6 @@ const STATS = [
   { value: "98%",  label: "Damage-Free Moves" },
 ];
 
-// Dynamically load Razorpay checkout script
 function loadRazorpayScript() {
   return new Promise((resolve) => {
     if (window.Razorpay) return resolve();
@@ -58,6 +57,9 @@ export default function HomeShiftingPage() {
   const [summary, setSummary]         = useState(null);
   const [paymentDone, setPaymentDone] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  // "online" | "cod" | null
+  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [codLoading, setCodLoading]       = useState(false);
 
   const [refId] = useState("HS" + Math.floor(Math.random() * 9000000 + 1000000));
 
@@ -86,7 +88,6 @@ export default function HomeShiftingPage() {
       const token = localStorage.getItem("token");
       const user  = JSON.parse(localStorage.getItem("user") || "{}");
 
-      // Fixed API URL — direct Next.js route
       const res = await fetch("/api/home-shifting", {
         method: "POST",
         headers: {
@@ -95,7 +96,7 @@ export default function HomeShiftingPage() {
         },
         body: JSON.stringify({
           refId, mode, serviceType,
-          city:       mode === "within" ? city : null,
+          city: mode === "within" ? city : fromCity,
           fromPlace,  toPlace,
           pickupFloor, pickupAccess,
           dropFloor,   dropAccess,
@@ -112,7 +113,6 @@ export default function HomeShiftingPage() {
         return;
       }
 
-      // Save booking details for payment and summary display
       setSummary({
         serviceType, mode,
         fromPlace, toPlace,
@@ -137,12 +137,11 @@ export default function HomeShiftingPage() {
     try {
       await loadRazorpayScript();
 
-      // Create Razorpay order on server
       const res = await fetch("/api/payments/create-order", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount:         999,   // Set your amount here (₹999)
+          amount:         999,
           service:        "Home Shifting",
           booking_id:     summary?.bookingId,
           customer_name:  summary?.customerName,
@@ -170,7 +169,6 @@ export default function HomeShiftingPage() {
           contact: summary?.customerPhone || "",
         },
         handler: async (response) => {
-          // Verify payment signature on server
           const vRes = await fetch("/api/payments/verify", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
@@ -178,6 +176,7 @@ export default function HomeShiftingPage() {
           });
           const vData = await vRes.json();
           if (vData.success) {
+            setPaymentMethod("online");
             setPaymentDone(true);
           } else {
             alert("❌ Payment verification failed. Please contact support.");
@@ -199,6 +198,46 @@ export default function HomeShiftingPage() {
     }
   }
 
+  // ── Cash on Delivery handler ──────────────────────────────────────────────
+  async function handleCOD() {
+    setCodLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+
+      const res = await fetch("/api/payments/cod", {
+        method:  "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          booking_id:     summary?.bookingId,
+          amount:         999,
+          service:        "Home Shifting",
+          customer_name:  summary?.customerName,
+          customer_email: summary?.customerEmail,
+          customer_phone: summary?.customerPhone,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || "Could not confirm COD. Please try again.");
+        return;
+      }
+
+      setPaymentMethod("cod");
+      setPaymentDone(true);
+
+    } catch (err) {
+      alert("Network error: " + err.message);
+    } finally {
+      setCodLoading(false);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   function handleReset() {
     setServiceType("");
     setCity(""); setFromCity(""); setToCity("");
@@ -209,6 +248,7 @@ export default function HomeShiftingPage() {
     setSubmitted(false);
     setSummary(null);
     setPaymentDone(false);
+    setPaymentMethod(null);
   }
 
   const fromPlace = mode === "within" ? `${fromLocation}, ${city}` : fromCity;
@@ -225,6 +265,7 @@ export default function HomeShiftingPage() {
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@700;800&display=swap');
           .check-btn:hover { background: #1d5ed8 !important; transform: translateY(-1px); }
           .pay-btn:hover   { background: #16a34a !important; transform: translateY(-1px); }
+          .cod-btn:hover   { background: #b45309 !important; transform: translateY(-1px); }
           .service-card:hover, .info-card:hover {
             transform: translateY(-4px);
             border-color: rgba(72,141,255,0.45) !important;
@@ -236,6 +277,16 @@ export default function HomeShiftingPage() {
             to   { opacity: 1; transform: translateY(0); }
           }
           .reset-btn:hover { background: var(--border-color) !important; }
+          .payment-tab { transition: all 0.2s; }
+          .payment-tab.active {
+            border-color: rgba(72,141,255,0.6) !important;
+            background: rgba(47,110,255,0.08) !important;
+          }
+          .payment-tab-cod.active {
+            border-color: rgba(245,158,11,0.6) !important;
+            background: rgba(245,158,11,0.08) !important;
+          }
+          .payment-tab:hover:not(.active) { border-color: rgba(72,141,255,0.3) !important; }
           @media (max-width: 980px) {
             .hero { flex-direction: column !important; align-items: stretch !important; }
             .hero-text { text-align: center; }
@@ -245,7 +296,7 @@ export default function HomeShiftingPage() {
             .why-inner { flex-direction: column !important; gap: 32px !important; }
           }
           @media (max-width: 640px) {
-            .between-cols, .detail-cols, .feature-grid { grid-template-columns: 1fr !important; }
+            .between-cols, .detail-cols, .feature-grid, .payment-methods { grid-template-columns: 1fr !important; }
             .hero { padding: 32px 18px 48px !important; }
             .form-wrap { padding: 22px !important; }
             .stats-row { gap: 18px !important; }
@@ -474,26 +525,111 @@ export default function HomeShiftingPage() {
                 </p>
 
                 {/* Reference ID */}
-                <div className="inline-block text-[12px] font-bold px-4 py-[6px] rounded-full mb-4 tracking-[0.5px]"
+                <div className="inline-block text-[12px] font-bold px-4 py-[6px] rounded-full mb-5 tracking-[0.5px]"
                   style={{ backgroundColor: "rgba(47,110,255,0.1)", color: "#2f6eff" }}>
                   Ref: {refId}
                 </div>
 
-                {/* Payment Success Message OR Pay Now Button */}
+                {/* ── Payment Section ─────────────────────────────── */}
                 {paymentDone ? (
+                  /* Confirmed state */
                   <div className="w-full rounded-2xl px-4 py-3 text-center text-sm font-bold mb-4"
-                    style={{ backgroundColor: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" }}>
-                    ✅ Payment Successful! Booking confirmed.
+                    style={{
+                      backgroundColor: "rgba(34,197,94,0.12)",
+                      color: "#22c55e",
+                      border: "1px solid rgba(34,197,94,0.3)",
+                    }}>
+                    {paymentMethod === "cod"
+                      ? "✅ Cash on Delivery confirmed! Pay ₹999 when our team arrives."
+                      : "✅ Payment Successful! Booking confirmed."}
                   </div>
                 ) : (
-                  <button
-                    onClick={handlePayment}
-                    disabled={paymentLoading}
-                    className="pay-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: "#22c55e" }}>
-                    {paymentLoading ? "Opening Payment..." : "💳 Pay Now — ₹999"}
-                  </button>
+                  <>
+                    {/* Payment method label */}
+                    <p className="text-[12px] font-semibold mb-3 w-full text-left"
+                      style={{ color: "var(--nav-text-muted)" }}>
+                      Choose Payment Method
+                    </p>
+
+                    {/* Tab selector */}
+                    <div className="payment-methods grid grid-cols-2 gap-3 w-full mb-4">
+                      {/* Online Tab */}
+                      <button
+                        onClick={() => setPaymentMethod("online")}
+                        className={`payment-tab rounded-2xl py-3 px-3 text-[12px] font-bold cursor-pointer border-2 flex flex-col items-center gap-1 ${paymentMethod === "online" ? "active" : ""}`}
+                        style={{
+                          backgroundColor: paymentMethod === "online" ? "rgba(47,110,255,0.08)" : "var(--background)",
+                          borderColor: paymentMethod === "online" ? "rgba(72,141,255,0.6)" : "var(--border-color)",
+                          color: paymentMethod === "online" ? "#2979d4" : "var(--nav-text-muted)",
+                        }}
+                      >
+                        <span className="text-[20px]">💳</span>
+                        <span>Pay Online</span>
+                        <span className="font-normal text-[10px]">UPI / Card / Net Banking</span>
+                      </button>
+
+                      {/* COD Tab */}
+                      <button
+                        onClick={() => setPaymentMethod("cod")}
+                        className={`payment-tab payment-tab-cod rounded-2xl py-3 px-3 text-[12px] font-bold cursor-pointer border-2 flex flex-col items-center gap-1 ${paymentMethod === "cod" ? "active" : ""}`}
+                        style={{
+                          backgroundColor: paymentMethod === "cod" ? "rgba(245,158,11,0.08)" : "var(--background)",
+                          borderColor: paymentMethod === "cod" ? "rgba(245,158,11,0.6)" : "var(--border-color)",
+                          color: paymentMethod === "cod" ? "#b45309" : "var(--nav-text-muted)",
+                        }}
+                      >
+                        <span className="text-[20px]">💵</span>
+                        <span>Cash on Delivery</span>
+                        <span className="font-normal text-[10px]">Pay when team arrives</span>
+                      </button>
+                    </div>
+
+                    {/* Action button based on selection */}
+                    {paymentMethod === "online" && (
+                      <button
+                        onClick={handlePayment}
+                        disabled={paymentLoading}
+                        className="pay-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{ backgroundColor: "#22c55e" }}>
+                        {paymentLoading ? "Opening Payment..." : "💳 Pay Now — ₹999"}
+                      </button>
+                    )}
+
+                    {paymentMethod === "cod" && (
+                      <>
+                        {/* COD info note */}
+                        <div
+                          className="w-full rounded-2xl px-4 py-3 text-[12px] mb-3 text-left"
+                          style={{
+                            backgroundColor: "rgba(245,158,11,0.08)",
+                            border: "1px solid rgba(245,158,11,0.25)",
+                            color: "#92400e",
+                          }}
+                        >
+                          <p className="font-bold mb-1">📌 Cash on Delivery — ₹999</p>
+                          <p className="leading-[1.6]">
+                            Pay in cash to our shifting team on the day of service.
+                            Please keep the exact amount ready.
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleCOD}
+                          disabled={codLoading}
+                          className="cod-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                          style={{ backgroundColor: "#d97706" }}>
+                          {codLoading ? "Confirming..." : "✅ Confirm Cash on Delivery"}
+                        </button>
+                      </>
+                    )}
+
+                    {!paymentMethod && (
+                      <p className="text-[11px] mb-3 text-center" style={{ color: "var(--nav-text-muted)" }}>
+                        ↑ Select a payment method above to proceed
+                      </p>
+                    )}
+                  </>
                 )}
+                {/* ─────────────────────────────────────────────────── */}
 
                 {/* Booking Summary */}
                 <div className="text-left mb-4 space-y-2">

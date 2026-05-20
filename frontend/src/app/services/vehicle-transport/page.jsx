@@ -49,8 +49,12 @@ export default function VehicleTransportPage() {
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState("");
   const [bookingData, setBookingData]   = useState(null);
-  const [paymentDone, setPaymentDone]   = useState(false);
+
+  // Payment state
+  const [paymentMethod, setPaymentMethod] = useState(""); // "online" | "cod"
+  const [paymentDone, setPaymentDone]     = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [codConfirmed, setCodConfirmed]   = useState(false);
 
   const handleSubmit = async () => {
     setError("");
@@ -65,7 +69,6 @@ export default function VehicleTransportPage() {
       const token = localStorage.getItem("token");
       const user  = JSON.parse(localStorage.getItem("user") || "{}");
 
-      // Fixed API URL — direct Next.js route
       const res = await fetch("/api/vehicle-transport", {
         method: "POST",
         headers: {
@@ -73,7 +76,7 @@ export default function VehicleTransportPage() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          mode, city, fromCity, toCity,
+          mode, city: mode === "within" ? city : fromCity,  fromCity, toCity,
           fromLocation, toLocation,
           vehicleType,  transportMode,
           customer_name:  user.name  || "",
@@ -88,7 +91,6 @@ export default function VehicleTransportPage() {
         return;
       }
 
-      // Save booking data for payment
       setBookingData({
         bookingId:     data.id || data.bookingId,
         customerName:  user.name  || "",
@@ -104,17 +106,17 @@ export default function VehicleTransportPage() {
     }
   };
 
-  const handlePayment = async () => {
+  // ── Online payment via Razorpay ──────────────────────────────────────────
+  const handleOnlinePayment = async () => {
     setPaymentLoading(true);
     try {
       await loadRazorpayScript();
 
-      // Create Razorpay order on server
       const res = await fetch("/api/payments/create-order", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount:         1999,   // Set your amount here (₹1999)
+          amount:         1999,
           service:        "Vehicle Transport",
           booking_id:     bookingData?.bookingId,
           customer_name:  bookingData?.customerName,
@@ -142,7 +144,6 @@ export default function VehicleTransportPage() {
           contact: bookingData?.customerPhone || "",
         },
         handler: async (response) => {
-          // Verify payment signature on server
           const vRes = await fetch("/api/payments/verify", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
@@ -166,6 +167,33 @@ export default function VehicleTransportPage() {
 
     } catch (err) {
       alert("Payment error: " + err.message);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  // ── Cash on Delivery confirmation ────────────────────────────────────────
+  const handleCodConfirm = async () => {
+    setPaymentLoading(true);
+    try {
+      // Optionally notify your backend that the customer chose COD
+      await fetch("/api/payments/cod-confirm", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking_id:     bookingData?.bookingId,
+          customer_name:  bookingData?.customerName,
+          customer_email: bookingData?.customerEmail,
+          customer_phone: bookingData?.customerPhone,
+          amount:         1999,
+          service:        "Vehicle Transport",
+        }),
+      }).catch(() => {/* non-blocking */});
+
+      setCodConfirmed(true);
+      setPaymentDone(true);
+    } catch (err) {
+      alert("Something went wrong. Please try again.");
     } finally {
       setPaymentLoading(false);
     }
@@ -202,7 +230,11 @@ export default function VehicleTransportPage() {
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@700;800&display=swap');
           .check-btn:hover { background: #1d5ed8 !important; transform: translateY(-1px); }
           .check-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
-          .pay-btn:hover { background: #16a34a !important; transform: translateY(-1px); }
+          .pay-btn-online:hover  { background: #1d5ed8 !important; transform: translateY(-1px); }
+          .pay-btn-cod:hover     { background: #b45309 !important; transform: translateY(-1px); }
+          .pay-btn-confirm:hover { background: #16a34a !important; transform: translateY(-1px); }
+          .pay-method-card { transition: all 0.2s; cursor: pointer; }
+          .pay-method-card:hover { transform: translateY(-2px); }
           .service-card:hover, .info-card:hover {
             transform: translateY(-4px);
             border-color: rgba(72,141,255,0.45) !important;
@@ -230,7 +262,7 @@ export default function VehicleTransportPage() {
             .why-inner { flex-direction: column !important; gap: 32px !important; }
           }
           @media (max-width: 640px) {
-            .between-cols, .detail-cols, .feature-grid { grid-template-columns: 1fr !important; }
+            .between-cols, .detail-cols, .feature-grid, .payment-methods { grid-template-columns: 1fr !important; }
             .hero { padding: 32px 18px 48px !important; }
             .form-wrap { padding: 22px !important; }
             .stats-row { gap: 18px !important; }
@@ -275,7 +307,7 @@ export default function VehicleTransportPage() {
 
           {/* Right: Success Card OR Booking Form */}
           {submitted ? (
-            /* SUCCESS STATE */
+            /* ── SUCCESS STATE ─────────────────────────────────────────── */
             <div
               className="form-wrap w-[410px] shrink-0 rounded-3xl p-7 shadow-[0_20px_50px_rgba(0,0,0,0.15)]"
               style={{
@@ -313,24 +345,149 @@ export default function VehicleTransportPage() {
                 </p>
               </div>
 
-              {/* Payment Success Message OR Pay Now Button */}
+              {/* ── PAYMENT SECTION ───────────────────────────────────── */}
               {paymentDone ? (
-                <div className="w-full rounded-2xl px-4 py-3 text-center text-sm font-bold mb-4"
-                  style={{ backgroundColor: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" }}>
-                  ✅ Payment Successful! Booking confirmed.
+                /* Final success message */
+                <div className="w-full rounded-2xl px-4 py-4 text-center mb-4"
+                  style={{
+                    backgroundColor: "rgba(34,197,94,0.10)",
+                    border: "1px solid rgba(34,197,94,0.3)",
+                  }}>
+                  <div className="text-[22px] mb-1">✅</div>
+                  <div className="font-bold text-sm mb-1" style={{ color: "#22c55e" }}>
+                    {codConfirmed ? "Cash on Delivery Confirmed!" : "Payment Successful!"}
+                  </div>
+                  <div className="text-[12px]" style={{ color: "var(--nav-text-muted)" }}>
+                    {codConfirmed
+                      ? "Pay ₹1999 in cash when our executive arrives at your doorstep."
+                      : "Booking confirmed. You're all set!"}
+                  </div>
                 </div>
+
+              ) : paymentMethod === "" ? (
+                /* Step 1 — choose payment method */
+                <>
+                  <p className="text-[12px] font-bold text-center mb-3 tracking-[1.5px] uppercase"
+                    style={{ color: "var(--nav-text-muted)" }}>
+                    Choose Payment Method
+                  </p>
+                  <div className="payment-methods grid grid-cols-2 gap-3 mb-4">
+                    {/* Online Payment card */}
+                    <div
+                      className="pay-method-card rounded-2xl p-4 text-center"
+                      onClick={() => setPaymentMethod("online")}
+                      style={{
+                        backgroundColor: "rgba(47,110,255,0.07)",
+                        border: "1.5px solid rgba(47,110,255,0.35)",
+                      }}
+                    >
+                      <div className="text-[26px] mb-2">💳</div>
+                      <div className="font-bold text-[13px] mb-1" style={{ color: "#2f6eff" }}>
+                        Pay Online
+                      </div>
+                      <div className="text-[11px]" style={{ color: "var(--nav-text-muted)" }}>
+                        UPI, Card, Net Banking
+                      </div>
+                    </div>
+
+                    {/* Cash on Delivery card */}
+                    <div
+                      className="pay-method-card rounded-2xl p-4 text-center"
+                      onClick={() => setPaymentMethod("cod")}
+                      style={{
+                        backgroundColor: "rgba(234,179,8,0.08)",
+                        border: "1.5px solid rgba(234,179,8,0.4)",
+                      }}
+                    >
+                      <div className="text-[26px] mb-2">💵</div>
+                      <div className="font-bold text-[13px] mb-1" style={{ color: "#ca8a04" }}>
+                        Cash on Delivery
+                      </div>
+                      <div className="text-[11px]" style={{ color: "var(--nav-text-muted)" }}>
+                        Pay when we arrive
+                      </div>
+                    </div>
+                  </div>
+                </>
+
+              ) : paymentMethod === "online" ? (
+                /* Step 2A — Online payment */
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <button
+                      onClick={() => setPaymentMethod("")}
+                      className="text-[11px] px-3 py-1 rounded-full border-none cursor-pointer"
+                      style={{ backgroundColor: "var(--background)", color: "var(--nav-text-muted)", border: "1px solid var(--border-color)" }}>
+                      ← Back
+                    </button>
+                    <span className="text-[12px] font-semibold" style={{ color: "var(--nav-text-muted)" }}>
+                      Online Payment
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleOnlinePayment}
+                    disabled={paymentLoading}
+                    className="pay-btn-online w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: "#2f6eff" }}>
+                    {paymentLoading ? "Opening Payment…" : "💳 Pay ₹1999 Online"}
+                  </button>
+                  <p className="text-[11px] text-center" style={{ color: "var(--nav-text-muted)" }}>
+                    Secured by Razorpay · UPI, Cards, Net Banking accepted
+                  </p>
+                </>
+
               ) : (
-                <button
-                  onClick={handlePayment}
-                  disabled={paymentLoading}
-                  className="pay-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: "#22c55e" }}>
-                  {paymentLoading ? "Opening Payment..." : "💳 Pay Now — ₹1999"}
-                </button>
+                /* Step 2B — Cash on Delivery */
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <button
+                      onClick={() => setPaymentMethod("")}
+                      className="text-[11px] px-3 py-1 rounded-full border-none cursor-pointer"
+                      style={{ backgroundColor: "var(--background)", color: "var(--nav-text-muted)", border: "1px solid var(--border-color)" }}>
+                      ← Back
+                    </button>
+                    <span className="text-[12px] font-semibold" style={{ color: "var(--nav-text-muted)" }}>
+                      Cash on Delivery
+                    </span>
+                  </div>
+
+                  {/* COD info box */}
+                  <div className="rounded-2xl p-4 mb-4"
+                    style={{
+                      backgroundColor: "rgba(234,179,8,0.07)",
+                      border: "1px solid rgba(234,179,8,0.35)",
+                    }}>
+                    <div className="flex items-start gap-3">
+                      <div className="text-[22px] shrink-0">💵</div>
+                      <div>
+                        <div className="font-bold text-[13px] mb-1" style={{ color: "#ca8a04" }}>
+                          Pay ₹1999 in Cash
+                        </div>
+                        <ul className="text-[11.5px] leading-[1.8] list-none p-0 m-0"
+                          style={{ color: "var(--nav-text-muted)" }}>
+                          <li>✔ Pay when our executive arrives</li>
+                          <li>✔ No advance required right now</li>
+                          <li>✔ Receipt provided on the spot</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleCodConfirm}
+                    disabled={paymentLoading}
+                    className="pay-btn-cod w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: "#d97706" }}>
+                    {paymentLoading ? "Confirming…" : "✅ Confirm Cash on Delivery"}
+                  </button>
+                  <p className="text-[11px] text-center" style={{ color: "var(--nav-text-muted)" }}>
+                    Our team will call you before arriving
+                  </p>
+                </>
               )}
 
               {/* Booking Summary */}
-              <div className="rounded-2xl p-4 mb-5"
+              <div className="rounded-2xl p-4 mb-5 mt-2"
                 style={{ backgroundColor: "var(--background)", border: "1px solid var(--border-color)" }}>
                 <div className="text-[11px] font-bold tracking-[2px] uppercase mb-3"
                   style={{ color: "#4f8fff" }}>Booking Summary</div>
@@ -366,8 +523,9 @@ export default function VehicleTransportPage() {
                 </span>
               </div>
             </div>
+
           ) : (
-            /* BOOKING FORM */
+            /* ── BOOKING FORM ──────────────────────────────────────────── */
             <div
               className="form-wrap w-[410px] shrink-0 rounded-3xl p-7 shadow-[0_20px_50px_rgba(0,0,0,0.15)]"
               style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-color)" }}
@@ -418,7 +576,6 @@ export default function VehicleTransportPage() {
                   </div>
                 </>
               ) : (
-                /* Between Cities Fields */
                 <>
                   <div className="between-cols grid grid-cols-2 gap-3 mb-[18px]">
                     <div>

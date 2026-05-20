@@ -127,4 +127,4 @@ exports.getStats = async (req, res) => {
     console.error("getStats:", err);
     res.status(500).json({ message: "Server error." });
   }
-};
+}; 

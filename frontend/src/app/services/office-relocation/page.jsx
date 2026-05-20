@@ -33,7 +33,6 @@ function SummaryRow({ label, value }) {
   );
 }
 
-// Dynamically load Razorpay checkout script
 function loadRazorpayScript() {
   return new Promise((resolve) => {
     if (window.Razorpay) return resolve();
@@ -62,6 +61,9 @@ export default function OfficeRelocationPage() {
   const [summary, setSummary]         = useState(null);
   const [paymentDone, setPaymentDone] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  // "online" | "cod" | null
+  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [codLoading, setCodLoading]       = useState(false);
 
   const validate = () => {
     const newErrors = {};
@@ -97,7 +99,6 @@ export default function OfficeRelocationPage() {
       const token = localStorage.getItem("token");
       const user  = JSON.parse(localStorage.getItem("user") || "{}");
 
-      // Fixed API URL — direct Next.js route
       const res = await fetch("/api/office-relocation", {
         method: "POST",
         headers: {
@@ -105,7 +106,7 @@ export default function OfficeRelocationPage() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          mode, city, fromCity, toCity,
+          mode,  city: mode === "within" ? city : fromCity, fromCity, toCity,
           fromLocation, toLocation,
           pickupFloor, pickupAccess,
           dropFloor,   dropAccess,
@@ -122,7 +123,6 @@ export default function OfficeRelocationPage() {
         return;
       }
 
-      // Save booking details for payment
       setSummary({
         mode, city, fromCity, toCity,
         fromLocation, toLocation,
@@ -147,12 +147,11 @@ export default function OfficeRelocationPage() {
     try {
       await loadRazorpayScript();
 
-      // Create Razorpay order on server
       const res = await fetch("/api/payments/create-order", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount:         1499,   // Set your amount here (₹1499)
+          amount:         1499,
           service:        "Office Relocation",
           booking_id:     summary?.bookingId,
           customer_name:  summary?.customerName,
@@ -180,7 +179,6 @@ export default function OfficeRelocationPage() {
           contact: summary?.customerPhone || "",
         },
         handler: async (response) => {
-          // Verify payment signature on server
           const vRes = await fetch("/api/payments/verify", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
@@ -188,6 +186,7 @@ export default function OfficeRelocationPage() {
           });
           const vData = await vRes.json();
           if (vData.success) {
+            setPaymentMethod("online");
             setPaymentDone(true);
           } else {
             alert("❌ Payment verification failed. Please contact support.");
@@ -209,6 +208,46 @@ export default function OfficeRelocationPage() {
     }
   };
 
+  // ── Cash on Delivery handler ──────────────────────────────────────────────
+  const handleCOD = async () => {
+    setCodLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+
+      const res = await fetch("/api/payments/cod", {
+        method:  "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          booking_id:     summary?.bookingId,
+          amount:         1499,
+          service:        "Office Relocation",
+          customer_name:  summary?.customerName,
+          customer_email: summary?.customerEmail,
+          customer_phone: summary?.customerPhone,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || "Could not confirm COD. Please try again.");
+        return;
+      }
+
+      setPaymentMethod("cod");
+      setPaymentDone(true);
+
+    } catch (err) {
+      alert("Network error: " + err.message);
+    } finally {
+      setCodLoading(false);
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
     <>
       <Navbar />
@@ -220,6 +259,7 @@ export default function OfficeRelocationPage() {
           @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Sora:wght@700;800&display=swap');
           .check-btn:hover { background: #1d5ed8 !important; transform: translateY(-1px); }
           .pay-btn:hover   { background: #16a34a !important; transform: translateY(-1px); }
+          .cod-btn:hover   { background: #b45309 !important; transform: translateY(-1px); }
           .service-card:hover, .info-card:hover {
             transform: translateY(-4px);
             border-color: rgba(72,141,255,0.45) !important;
@@ -238,6 +278,10 @@ export default function OfficeRelocationPage() {
             from { transform: scale(0); }
             to   { transform: scale(1); }
           }
+          .payment-tab { transition: all 0.2s; }
+          .payment-tab:hover:not(.active-online):not(.active-cod) {
+            border-color: rgba(72,141,255,0.3) !important;
+          }
           @media (max-width: 980px) {
             .hero { flex-direction: column !important; align-items: stretch !important; }
             .hero-text { text-align: center; }
@@ -247,7 +291,7 @@ export default function OfficeRelocationPage() {
             .why-inner { flex-direction: column !important; gap: 32px !important; }
           }
           @media (max-width: 640px) {
-            .between-cols, .detail-cols, .feature-grid { grid-template-columns: 1fr !important; }
+            .between-cols, .detail-cols, .feature-grid, .payment-methods { grid-template-columns: 1fr !important; }
             .hero { padding: 32px 18px 48px !important; }
             .form-wrap { padding: 22px !important; }
             .stats-row { gap: 18px !important; }
@@ -310,27 +354,112 @@ export default function OfficeRelocationPage() {
                   Request Submitted Successfully!
                 </h3>
 
-                <p className="text-[14px] leading-[1.75] mb-4"
+                <p className="text-[14px] leading-[1.75] mb-5"
                   style={{ color: "var(--nav-text-muted)" }}>
                   Your office relocation request has been received. Our team will
                   contact you shortly to confirm details and schedule a free site survey.
                 </p>
 
-                {/* Payment Success Message OR Pay Now Button */}
+                {/* ── Payment Section ─────────────────────────────── */}
                 {paymentDone ? (
+                  /* Confirmed state */
                   <div className="w-full rounded-2xl px-4 py-3 text-center text-sm font-bold mb-4"
-                    style={{ backgroundColor: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" }}>
-                    ✅ Payment Successful! Booking confirmed.
+                    style={{
+                      backgroundColor: "rgba(34,197,94,0.12)",
+                      color: "#22c55e",
+                      border: "1px solid rgba(34,197,94,0.3)",
+                    }}>
+                    {paymentMethod === "cod"
+                      ? "✅ Cash on Delivery confirmed! Pay ₹1499 when our team arrives."
+                      : "✅ Payment Successful! Booking confirmed."}
                   </div>
                 ) : (
-                  <button
-                    onClick={handlePayment}
-                    disabled={paymentLoading}
-                    className="pay-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: "#22c55e" }}>
-                    {paymentLoading ? "Opening Payment..." : "💳 Pay Now — ₹1499"}
-                  </button>
+                  <>
+                    {/* Payment method label */}
+                    <p className="text-[12px] font-semibold mb-3 w-full text-left"
+                      style={{ color: "var(--nav-text-muted)" }}>
+                      Choose Payment Method
+                    </p>
+
+                    {/* Tab selector */}
+                    <div className="payment-methods grid grid-cols-2 gap-3 w-full mb-4">
+                      {/* Online Tab */}
+                      <button
+                        onClick={() => setPaymentMethod("online")}
+                        className={`payment-tab rounded-2xl py-3 px-3 text-[12px] font-bold cursor-pointer border-2 flex flex-col items-center gap-1 ${paymentMethod === "online" ? "active-online" : ""}`}
+                        style={{
+                          backgroundColor: paymentMethod === "online" ? "rgba(47,110,255,0.08)" : "var(--background)",
+                          borderColor: paymentMethod === "online" ? "rgba(72,141,255,0.6)" : "var(--border-color)",
+                          color: paymentMethod === "online" ? "#2979d4" : "var(--nav-text-muted)",
+                        }}
+                      >
+                        <span className="text-[20px]">💳</span>
+                        <span>Pay Online</span>
+                        <span className="font-normal text-[10px]">UPI / Card / Net Banking</span>
+                      </button>
+
+                      {/* COD Tab */}
+                      <button
+                        onClick={() => setPaymentMethod("cod")}
+                        className={`payment-tab rounded-2xl py-3 px-3 text-[12px] font-bold cursor-pointer border-2 flex flex-col items-center gap-1 ${paymentMethod === "cod" ? "active-cod" : ""}`}
+                        style={{
+                          backgroundColor: paymentMethod === "cod" ? "rgba(245,158,11,0.08)" : "var(--background)",
+                          borderColor: paymentMethod === "cod" ? "rgba(245,158,11,0.6)" : "var(--border-color)",
+                          color: paymentMethod === "cod" ? "#b45309" : "var(--nav-text-muted)",
+                        }}
+                      >
+                        <span className="text-[20px]">💵</span>
+                        <span>Cash on Delivery</span>
+                        <span className="font-normal text-[10px]">Pay when team arrives</span>
+                      </button>
+                    </div>
+
+                    {/* Action button based on selection */}
+                    {paymentMethod === "online" && (
+                      <button
+                        onClick={handlePayment}
+                        disabled={paymentLoading}
+                        className="pay-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                        style={{ backgroundColor: "#22c55e" }}>
+                        {paymentLoading ? "Opening Payment..." : "💳 Pay Now — ₹1499"}
+                      </button>
+                    )}
+
+                    {paymentMethod === "cod" && (
+                      <>
+                        {/* COD info note */}
+                        <div
+                          className="w-full rounded-2xl px-4 py-3 text-[12px] mb-3 text-left"
+                          style={{
+                            backgroundColor: "rgba(245,158,11,0.08)",
+                            border: "1px solid rgba(245,158,11,0.25)",
+                            color: "#92400e",
+                          }}
+                        >
+                          <p className="font-bold mb-1">📌 Cash on Delivery — ₹1499</p>
+                          <p className="leading-[1.6]">
+                            Pay in cash to our relocation team on the day of service.
+                            Please keep the exact amount ready.
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleCOD}
+                          disabled={codLoading}
+                          className="cod-btn w-full py-[14px] rounded-[14px] border-none text-white font-bold text-[15px] cursor-pointer transition-all duration-200 mb-4 disabled:opacity-60 disabled:cursor-not-allowed"
+                          style={{ backgroundColor: "#d97706" }}>
+                          {codLoading ? "Confirming..." : "✅ Confirm Cash on Delivery"}
+                        </button>
+                      </>
+                    )}
+
+                    {!paymentMethod && (
+                      <p className="text-[11px] mb-3 text-center" style={{ color: "var(--nav-text-muted)" }}>
+                        ↑ Select a payment method above to proceed
+                      </p>
+                    )}
+                  </>
                 )}
+                {/* ─────────────────────────────────────────────────── */}
 
                 {/* Booking Summary */}
                 <div className="w-full rounded-2xl p-4 text-left mb-4"

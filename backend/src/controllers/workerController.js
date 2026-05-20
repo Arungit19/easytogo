@@ -1,3 +1,5 @@
+// src/controllers/workerController.js
+
 // dotenv MUST load first — before anything reads process.env
 require("dotenv").config();
 
@@ -34,9 +36,17 @@ const getIP = (req) =>
     .split(",")[0]
     .trim();
 
+// ── Service → DB Table mapping (used in multiple functions) ──────────────────
+const SERVICE_TABLE_MAP = {
+  "Home Shifting":       "home_shifting_bookings",
+  "Cleaning":            "cleaning_bookings",
+  "Office Relocation":   "office_relocation_requests",
+  "Packing & Unpacking": "packing_requests",
+  "Storage":             "storage_bookings",
+  "Vehicle Transport":   "vehicle_transport_requests",
+};
+
 // ── Helper: Send activity alert email to worker ───────────────────────────────
-// type = "register" | "login"
-// Non-blocking — errors are only logged, never break the main flow.
 const sendWorkerActivityAlert = async ({ to, name, type, time, ip }) => {
   const isRegister = type === "register";
 
@@ -112,7 +122,6 @@ const sendWorkerActivityAlert = async ({ to, name, type, time, ip }) => {
     });
     console.log(`[WorkerAlert] ✅ Email sent to ${to} — MessageId: ${info.messageId}`);
   } catch (err) {
-    // Log full error details for debugging — never block login/register
     console.error(`[WorkerAlert] ❌ Failed to send ${type} email to ${to}:`);
     console.error(`   Message: ${err.message}`);
     console.error(`   Code: ${err.code}`);
@@ -120,6 +129,7 @@ const sendWorkerActivityAlert = async ({ to, name, type, time, ip }) => {
   }
 };
 
+// ── Helper: sign JWT token ────────────────────────────────────────────────────
 function signToken(worker) {
   return jwt.sign(
     { id: worker.id, email: worker.email, role: "worker" },
@@ -128,7 +138,9 @@ function signToken(worker) {
   );
 }
 
-// ── REGISTER ──────────────────────────────────────────────────────────────────
+// =============================================================================
+// REGISTER
+// =============================================================================
 const register = async (req, res) => {
   const { name, email, phone, serviceCategory, city, availFrom, availTo, password } = req.body;
 
@@ -166,7 +178,9 @@ const register = async (req, res) => {
   }
 };
 
-// ── LOGIN ─────────────────────────────────────────────────────────────────────
+// =============================================================================
+// LOGIN
+// =============================================================================
 const login = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -222,7 +236,9 @@ const login = async (req, res) => {
   }
 };
 
-// ── GET PROFILE ───────────────────────────────────────────────────────────────
+// =============================================================================
+// GET PROFILE
+// =============================================================================
 const getProfile = async (req, res) => {
   try {
     const result = await pool.query(
@@ -242,7 +258,9 @@ const getProfile = async (req, res) => {
   }
 };
 
-// ── ADMIN: Get all workers ────────────────────────────────────────────────────
+// =============================================================================
+// ADMIN: Get all workers
+// =============================================================================
 const getAllWorkers = async (req, res) => {
   try {
     const status = req.query.status || null;
@@ -260,7 +278,9 @@ const getAllWorkers = async (req, res) => {
   }
 };
 
-// ── ADMIN: Approve / Reject ───────────────────────────────────────────────────
+// =============================================================================
+// ADMIN: Approve / Reject worker
+// =============================================================================
 const updateWorkerStatus = async (req, res) => {
   const { id }     = req.params;
   const { status } = req.body;
@@ -278,12 +298,13 @@ const updateWorkerStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: "Worker not found." });
     }
 
-    // Notify worker about approval/rejection
     const { name, email } = result.rows[0];
     if (email) {
       const html = `
         <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-          <div style="background:${status === "approved" ? "linear-gradient(135deg,#059669,#10b981)" : "linear-gradient(135deg,#dc2626,#ef4444)"};padding:28px 32px;text-align:center;">
+          <div style="background:${status === "approved"
+            ? "linear-gradient(135deg,#059669,#10b981)"
+            : "linear-gradient(135deg,#dc2626,#ef4444)"};padding:28px 32px;text-align:center;">
             <h1 style="color:white;margin:0;font-size:22px;">EasyToGo Worker Portal</h1>
           </div>
           <div style="padding:28px 32px;background:#fff;">
@@ -301,7 +322,9 @@ const updateWorkerStatus = async (req, res) => {
       transporter.sendMail({
         from: `"EasyToGo Worker Portal" <${process.env.EMAIL_USER}>`,
         to: email,
-        subject: status === "approved" ? "EasyToGo — Your Worker Account is Approved! 🎉" : "EasyToGo — Worker Account Application Update",
+        subject: status === "approved"
+          ? "EasyToGo — Your Worker Account is Approved! 🎉"
+          : "EasyToGo — Worker Account Application Update",
         html,
       }).catch(err => console.error("[WorkerAlert] Approval email failed:", err.message));
     }
@@ -313,7 +336,9 @@ const updateWorkerStatus = async (req, res) => {
   }
 };
 
-// ── ADMIN: Delete worker ──────────────────────────────────────────────────────
+// =============================================================================
+// ADMIN: Delete worker
+// =============================================================================
 const deleteWorker = async (req, res) => {
   const { id } = req.params;
   try {
@@ -325,31 +350,146 @@ const deleteWorker = async (req, res) => {
   }
 };
 
-// ── WORKER: Accept booking ────────────────────────────────────────────────────
+// =============================================================================
+// WORKER: Accept Booking  ← MAIN FIX
+// Flow:
+//   1. Check booking exists aur already accepted nahi hai
+//   2. Service table mein worker_id + status = 'confirmed' UPDATE karo
+//   3. worker_bookings history table mein INSERT karo
+//   4. Worker ka total_jobs increment karo
+// =============================================================================
 const acceptBooking = async (req, res) => {
-  const { bookingId, service } = req.body;
+  const { bookingId, booking_id, service } = req.body;
   const workerId = req.workerId;
+
+  // bookingId ya booking_id dono accept karo
+  const bId = bookingId || booking_id;
+
+  if (!bId || !service) {
+    return res.status(400).json({
+      success: false,
+      message: "bookingId aur service dono required hain.",
+    });
+  }
+
+  const table = SERVICE_TABLE_MAP[service];
+  if (!table) {
+    return res.status(400).json({
+      success: false,
+      message: `Unknown service: "${service}". Valid: ${Object.keys(SERVICE_TABLE_MAP).join(", ")}`,
+    });
+  }
+
   try {
-    await pool.query(
-      `INSERT INTO worker_bookings (worker_id, booking_id, service, action)
-       VALUES ($1, $2, $3, 'accepted') ON CONFLICT DO NOTHING`,
-      [workerId, bookingId, service]
+    // ── Step 1: Booking exist karti hai? Already accepted hai? ───────────────
+    const check = await pool.query(
+      `SELECT id, worker_id, status FROM ${table} WHERE id = $1`,
+      [bId]
     );
-    await pool.query("UPDATE workers SET total_jobs = total_jobs + 1 WHERE id = $1", [workerId]);
-    return res.json({ success: true, message: "Booking accepted." });
+
+    if (check.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Booking #${bId} not found in ${service}.`,
+      });
+    }
+
+    const existing = check.rows[0];
+
+    // Kisi aur ne already accept kar liya
+    if (
+      existing.worker_id !== null &&
+      existing.worker_id !== undefined &&
+      String(existing.worker_id) !== String(workerId)
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: "Yeh booking pehle se kisi aur worker ne accept kar li hai.",
+      });
+    }
+
+    // ── Step 2: Service table mein worker_id SET karo ← YEH MAIN FIX HAI ───
+    // Pehle updated_at column check karo — agar nahi hai to without it update karo
+    let updateQuery;
+    try {
+      await pool.query(
+        `UPDATE ${table}
+         SET worker_id = $1,
+             status    = 'confirmed',
+             updated_at = NOW()
+         WHERE id = $2`,
+        [workerId, bId]
+      );
+    } catch (colErr) {
+      // updated_at column nahi hai — without it retry karo
+      if (colErr.message.includes("updated_at")) {
+        await pool.query(
+          `UPDATE ${table}
+           SET worker_id = $1,
+               status    = 'confirmed'
+           WHERE id = $2`,
+          [workerId, bId]
+        );
+      } else {
+        throw colErr; // koi aur error hai — rethrow
+      }
+    }
+
+    console.log(`[acceptBooking] ✅ ${service} #${bId} → worker ${workerId} assigned, status=confirmed`);
+
+    // ── Step 3: worker_bookings history mein insert karo ────────────────────
+    try {
+      await pool.query(
+        `INSERT INTO worker_bookings (worker_id, booking_id, service, action)
+         VALUES ($1, $2, $3, 'accepted')
+         ON CONFLICT DO NOTHING`,
+        [workerId, bId, service]
+      );
+    } catch (histErr) {
+      // History insert fail ho to bhi main accept successful hai — sirf log karo
+      console.warn("[acceptBooking] worker_bookings insert failed (non-fatal):", histErr.message);
+    }
+
+    // ── Step 4: Worker ka total_jobs increment karo ──────────────────────────
+    try {
+      await pool.query(
+        `UPDATE workers
+         SET total_jobs = COALESCE(total_jobs, 0) + 1
+         WHERE id = $1`,
+        [workerId]
+      );
+    } catch (jobErr) {
+      console.warn("[acceptBooking] total_jobs update failed (non-fatal):", jobErr.message);
+    }
+
+    return res.status(200).json({
+      success:   true,
+      message:   "Booking successfully accepted!",
+      bookingId: bId,
+      service,
+      workerId,
+      status:    "confirmed",
+    });
+
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: "Server error." });
+    console.error("[acceptBooking] ❌ Error:", err.message);
+    return res.status(500).json({
+      success: false,
+      message: "Server error: " + err.message,
+    });
   }
 };
 
-// ── WORKER: Get my bookings ───────────────────────────────────────────────────
-// Uses explicit column list to avoid errors from missing optional columns
+// =============================================================================
+// WORKER: Get my accepted bookings
+// =============================================================================
 const getMyBookings = async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT id, worker_id, booking_id, service, action, assigned_at
-       FROM worker_bookings WHERE worker_id = $1 ORDER BY assigned_at DESC`,
+       FROM worker_bookings
+       WHERE worker_id = $1
+       ORDER BY assigned_at DESC`,
       [req.workerId]
     );
     return res.json({ success: true, data: result.rows });
@@ -359,4 +499,93 @@ const getMyBookings = async (req, res) => {
   }
 };
 
-module.exports = { register, login, getProfile, getAllWorkers, updateWorkerStatus, deleteWorker, acceptBooking, getMyBookings };
+// =============================================================================
+// WORKER: Update profile
+// =============================================================================
+const updateProfile = async (req, res) => {
+  const workerId = req.workerId;
+  const {
+    name, city, address, serviceCategory, experience,
+    availability, bio, aadhaarNumber, panNumber,
+    vehicleType, emergencyContact, availFrom, availTo,
+  } = req.body;
+
+  try {
+    // Parse availability string "HH:MM - HH:MM" if availFrom/availTo not separate
+    let aFrom = availFrom;
+    let aTo   = availTo;
+    if (!aFrom && availability) {
+      const match = availability.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+      if (match) { aFrom = match[1]; aTo = match[2]; }
+    }
+
+    await pool.query(
+      `UPDATE workers SET
+        name             = COALESCE($1,  name),
+        city             = COALESCE($2,  city),
+        service_category = COALESCE($3,  service_category),
+        avail_from       = COALESCE($4,  avail_from),
+        avail_to         = COALESCE($5,  avail_to),
+        updated_at       = NOW()
+       WHERE id = $6`,
+      [name || null, city || null, serviceCategory || null, aFrom || null, aTo || null, workerId]
+    );
+
+    return res.json({ success: true, message: "Profile updated successfully." });
+  } catch (err) {
+    console.error("updateProfile error:", err.message);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+// =============================================================================
+// WORKER: Update availability
+// =============================================================================
+const updateAvailability = async (req, res) => {
+  const workerId = req.workerId;
+  const { availFrom, availTo, availability } = req.body;
+
+  let aFrom = availFrom;
+  let aTo   = availTo;
+
+  // Parse "HH:MM - HH:MM" string if separate values not given
+  if (!aFrom && availability) {
+    const match = availability.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+    if (match) { aFrom = match[1]; aTo = match[2]; }
+  }
+
+  if (!aFrom || !aTo) {
+    return res.status(400).json({ success: false, message: "availFrom aur availTo required hain." });
+  }
+
+  try {
+    await pool.query(
+      `UPDATE workers SET avail_from = $1, avail_to = $2, updated_at = NOW() WHERE id = $3`,
+      [aFrom, aTo, workerId]
+    );
+    return res.json({
+      success: true,
+      message: "Availability updated.",
+      availability: `${aFrom} - ${aTo}`,
+    });
+  } catch (err) {
+    console.error("updateAvailability error:", err.message);
+    return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
+module.exports = {
+  register,
+  login,
+  getProfile,
+  getAllWorkers,
+  updateWorkerStatus,
+  deleteWorker,
+  acceptBooking,
+  getMyBookings,
+  updateProfile,
+  updateAvailability,
+};

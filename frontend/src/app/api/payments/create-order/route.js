@@ -2,10 +2,7 @@ import { NextResponse } from "next/server";
 import Razorpay from "razorpay";
 import pool from "../../../../lib/db.js";
 
-const razorpay = new Razorpay({
-  key_id:     process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+export const dynamic = "force-dynamic";
 
 export async function POST(req) {
   try {
@@ -37,6 +34,11 @@ export async function POST(req) {
         { status: 500 }
       );
     }
+
+    const razorpay = new Razorpay({
+      key_id:     process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
 
     // Create Razorpay order
     const order = await razorpay.orders.create({

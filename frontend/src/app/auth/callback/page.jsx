@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const API = `${BASE_URL}/api`;
 
-export default function AuthCallbackPage() {
+function AuthCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [status, setStatus] = useState("loading"); // loading | success | error
+  const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -32,14 +32,11 @@ export default function AuthCallbackPage() {
 
     const handleCallback = async () => {
       try {
-        // Decode token to get user info
         const base64Payload = token.split(".")[1];
         const payload = JSON.parse(atob(base64Payload));
 
-        // Save token
         localStorage.setItem("token", token);
 
-        // Fetch full user profile from backend
         let user = null;
         try {
           const res = await fetch(`${API}/users/profile`, {
@@ -53,7 +50,6 @@ export default function AuthCallbackPage() {
           // fallback to token payload
         }
 
-        // If profile fetch failed, use token payload
         if (!user) {
           user = {
             id: payload.id,
@@ -65,7 +61,6 @@ export default function AuthCallbackPage() {
         localStorage.setItem("user", JSON.stringify(user));
         setStatus("success");
 
-        // Redirect based on role
         const role = user?.role || payload?.role || "";
         if (role === "admin" || user?.isAdmin === true) {
           router.push("/admin");
@@ -88,7 +83,6 @@ export default function AuthCallbackPage() {
       <div className="bg-white rounded-2xl shadow-lg p-10 flex flex-col items-center gap-4 max-w-sm w-full mx-4">
         {status === "loading" && (
           <>
-            {/* Spinner */}
             <div className="w-14 h-14 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
             <p className="text-blue-800 font-semibold text-lg">Signing you in...</p>
             <p className="text-gray-400 text-sm text-center">
@@ -122,5 +116,17 @@ export default function AuthCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-14 h-14 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
+      </div>
+    }>
+      <AuthCallbackInner />
+    </Suspense>
   );
 }

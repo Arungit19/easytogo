@@ -46,6 +46,15 @@ const SERVICE_TABLE_MAP = {
   "Vehicle Transport":   "vehicle_transport_requests",
 };
 
+const SERVICE_TRACKING_CONFIG = {
+  "Home Shifting":       { key: "home_shifting",      origin: "from_place",    destination: "to_place" },
+  "Cleaning":            { key: "cleaning",           origin: "from_location", destination: "to_location" },
+  "Office Relocation":   { key: "office_relocation",  origin: "from_location", destination: "to_location" },
+  "Packing & Unpacking": { key: "packing",            origin: "address",       destination: "city" },
+  "Storage":             { key: "storage",            origin: "address",       destination: "city" },
+  "Vehicle Transport":   { key: "vehicle_transport",  origin: "from_location", destination: "to_location" },
+};
+
 // ── Helper: Send activity alert email to worker ───────────────────────────────
 const sendWorkerActivityAlert = async ({ to, name, type, time, ip }) => {
   const isRegister = type === "register";
@@ -373,6 +382,7 @@ const acceptBooking = async (req, res) => {
   }
 
   const table = SERVICE_TABLE_MAP[service];
+  const trackingConfig = SERVICE_TRACKING_CONFIG[service];
   if (!table) {
     return res.status(400).json({
       success: false,
@@ -382,8 +392,14 @@ const acceptBooking = async (req, res) => {
 
   try {
     // ── Step 1: Booking exist karti hai? Already accepted hai? ───────────────
+    const originCol = trackingConfig?.origin || "NULL";
+    const destCol = trackingConfig?.destination || "NULL";
     const check = await pool.query(
-      `SELECT id, worker_id, status FROM ${table} WHERE id = $1`,
+      `SELECT id, worker_id, status, user_id,
+              ${originCol} AS origin_address,
+              ${destCol} AS dest_address
+       FROM ${table}
+       WHERE id = $1`,
       [bId]
     );
 
@@ -437,6 +453,57 @@ const acceptBooking = async (req, res) => {
 
     console.log(`[acceptBooking] ✅ ${service} #${bId} → worker ${workerId} assigned, status=confirmed`);
 
+    let trackingSession = null;
+    if (trackingConfig) {
+      try {
+        const stage = ["cleaning", "storage", "packing"].includes(trackingConfig.key)
+          ? "worker_assigned"
+          : "confirmed";
+        const upsert = await pool.query(
+          `INSERT INTO tracking_sessions
+             (booking_id, service_type, worker_id, user_id,
+              origin_address, dest_address, stage, status, started_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW())
+           ON CONFLICT (booking_id, service_type)
+           DO UPDATE SET
+             worker_id = EXCLUDED.worker_id,
+             user_id = COALESCE(tracking_sessions.user_id, EXCLUDED.user_id),
+             origin_address = COALESCE(tracking_sessions.origin_address, EXCLUDED.origin_address),
+             dest_address = COALESCE(tracking_sessions.dest_address, EXCLUDED.dest_address),
+             stage = CASE
+               WHEN tracking_sessions.stage = 'pending' THEN EXCLUDED.stage
+               ELSE tracking_sessions.stage
+             END,
+             status = CASE
+               WHEN tracking_sessions.status = 'completed' THEN tracking_sessions.status
+               ELSE 'active'
+             END,
+             started_at = COALESCE(tracking_sessions.started_at, NOW()),
+             updated_at = NOW()
+           RETURNING *`,
+          [
+            bId,
+            trackingConfig.key,
+            workerId,
+            existing.user_id || null,
+            existing.origin_address || null,
+            existing.dest_address || null,
+            stage,
+          ]
+        );
+
+        trackingSession = upsert.rows[0];
+
+        await pool.query(
+          `INSERT INTO tracking_stage_history (tracking_session_id, stage, note, updated_by)
+           VALUES ($1, $2, 'Worker accepted booking', 'worker')`,
+          [trackingSession.id, stage]
+        );
+      } catch (trackingErr) {
+        console.warn("[acceptBooking] tracking session upsert failed (non-fatal):", trackingErr.message);
+      }
+    }
+
     // ── Step 3: worker_bookings history mein insert karo ────────────────────
     try {
       await pool.query(
@@ -469,6 +536,10 @@ const acceptBooking = async (req, res) => {
       service,
       workerId,
       status:    "confirmed",
+      trackingSession,
+      trackingSessionId: trackingSession?.id || null,
+      trackingServiceType: trackingConfig?.key || null,
+      trackingUrl: trackingConfig?.key ? `/tracking/${bId}/${trackingConfig.key}` : null,
     });
 
   } catch (err) {

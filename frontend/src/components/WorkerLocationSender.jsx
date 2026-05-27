@@ -5,13 +5,20 @@ import { useEffect, useRef, useState } from "react";
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const INTERVAL_MS = 10000;
 
-export default function WorkerLocationSender({ sessionId }) {
+export default function WorkerLocationSender({ sessionId, autoStart = false }) {
   const [active, setActive]     = useState(false);
   const [lastSent, setLastSent] = useState(null);
   const [error, setError]       = useState("");
   const intervalRef             = useRef(null);
   const watchIdRef              = useRef(null);
   const latestPos               = useRef(null);
+  const didAutoStart            = useRef(false);
+
+  useEffect(() => {
+    if (!autoStart || !sessionId || didAutoStart.current) return;
+    didAutoStart.current = true;
+    setActive(true);
+  }, [autoStart, sessionId]);
 
   useEffect(() => {
     if (!active) return;

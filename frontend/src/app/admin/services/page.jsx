@@ -1,98 +1,161 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { DEFAULT_SERVICES } from "../../../lib/serviceDefaults";
 
-const initialServices = [
-  { id: 1, icon: "🏘️", title: "Home Shifting", desc: "Complete house relocation — local or intercity.", bookings: 412, revenue: "₹1,24,80,000", active: true },
-  { id: 2, icon: "🏢", title: "Office Relocation", desc: "Seamless office shifting with minimal downtime.", bookings: 87, revenue: "₹65,25,000", active: true },
-  { id: 3, icon: "📦", title: "Packing & Unpacking", desc: "Expert packing for fragile and valuable items.", bookings: 318, revenue: "₹28,62,000", active: true },
-  { id: 4, icon: "🚗", title: "Vehicle Transport", desc: "Safe and insured car transport across all major routes.", bookings: 145, revenue: "₹21,75,000", active: true },
-  { id: 5, icon: "🏬", title: "Storage Solutions", desc: "Secure climate-controlled storage facilities.", bookings: 203, revenue: "₹10,15,000", active: false },
-  { id: 6, icon: "🧹", title: "Post-Move Cleaning", desc: "Deep cleaning for old or new home after the move.", bookings: 119, revenue: "₹4,16,500", active: true },
+const EMOJI_OPTIONS = [
+  "\u{1F3D8}\uFE0F",
+  "\u{1F3E2}",
+  "\u{1F4E6}",
+  "\u{1F697}",
+  "\u{1F3EC}",
+  "\u{1F9F9}",
+  "\u{1F6CB}\uFE0F",
+  "\u{1F527}",
+  "\u{1F4D0}",
+  "\u{1FA9C}",
+  "\u{1F69B}",
+  "\u{1F3D7}\uFE0F",
+  "\u{1F4EB}",
+  "\u{1F5C4}\uFE0F",
+  "\u{1F9F0}",
 ];
 
-const EMOJI_OPTIONS = ["🏘️","🏢","📦","🚗","🏬","🧹","🛋️","🔧","📐","🪜","🚛","🏗️","📫","🗄️","🧰"];
+const emptyForm = {
+  icon: "\u{1F3D8}\uFE0F",
+  title: "",
+  desc: "",
+  tag: "",
+  link: "#services",
+};
 
 export default function ServicesPage() {
-  const [services, setServices] = useState(initialServices);
-
-  // ── Modal state: null = closed, "add" = add mode, "edit" = edit mode
+  const [services, setServices] = useState(DEFAULT_SERVICES);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [modalMode, setModalMode] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ icon: "🏘️", title: "", desc: "" });
+  const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
-
-  // ── Delete confirm
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
-  // ── Toggle active/inactive
-  const toggleActive = (id) => {
-    setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, active: !s.active } : s))
-    );
+  const fetchServices = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/services", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load services.");
+      setServices(data.services || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // ── Open Add modal
+  useEffect(() => {
+    fetchServices();
+  }, []);
+
   const openAddModal = () => {
-    setForm({ icon: "🏘️", title: "", desc: "" });
+    setForm(emptyForm);
     setError("");
     setModalMode("add");
   };
 
-  // ── Open Edit modal
   const openEditModal = (service) => {
-    setForm({ icon: service.icon, title: service.title, desc: service.desc });
+    setForm({
+      icon: service.icon,
+      title: service.title,
+      desc: service.desc,
+      tag: service.tag || "",
+      link: service.link || "#services",
+    });
     setEditingId(service.id);
     setError("");
     setModalMode("edit");
   };
 
-  // ── Close modal
   const handleClose = () => {
     setModalMode(null);
     setEditingId(null);
-    setForm({ icon: "🏘️", title: "", desc: "" });
+    setForm(emptyForm);
     setError("");
   };
 
-  // ── Add service
-  const handleAddService = () => {
-    if (!form.title.trim()) { setError("Service title is required."); return; }
-    if (!form.desc.trim()) { setError("Description is required."); return; }
-    const newService = {
-      id: Date.now(),
-      icon: form.icon,
-      title: form.title.trim(),
-      desc: form.desc.trim(),
-      bookings: 0,
-      revenue: "₹0",
-      active: true,
-    };
-    setServices((prev) => [...prev, newService]);
-    handleClose();
+  const validateForm = () => {
+    if (!form.title.trim()) return "Service title is required.";
+    if (!form.desc.trim()) return "Description is required.";
+    return "";
   };
 
-  // ── Save edited service
-  const handleEditService = () => {
-    if (!form.title.trim()) { setError("Service title is required."); return; }
-    if (!form.desc.trim()) { setError("Description is required."); return; }
+  const saveService = async () => {
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const url = modalMode === "edit" ? `/api/services/${editingId}` : "/api/services";
+      const res = await fetch(url, {
+        method: modalMode === "edit" ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to save service.");
+
+      setServices((prev) => {
+        if (modalMode === "edit") {
+          return prev.map((service) => (service.id === editingId ? data.service : service));
+        }
+        return [...prev, data.service];
+      });
+      handleClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleActive = async (service) => {
+    const nextActive = !service.active;
     setServices((prev) =>
-      prev.map((s) =>
-        s.id === editingId
-          ? { ...s, icon: form.icon, title: form.title.trim(), desc: form.desc.trim() }
-          : s
-      )
+      prev.map((item) => (item.id === service.id ? { ...item, active: nextActive } : item))
     );
-    handleClose();
+
+    try {
+      const res = await fetch(`/api/services/${service.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: nextActive }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to update service.");
+    } catch (err) {
+      setServices((prev) =>
+        prev.map((item) => (item.id === service.id ? { ...item, active: service.active } : item))
+      );
+      setError(err.message);
+    }
   };
 
-  // ── Delete with confirm
-  const handleDeleteRequest = (id) => setDeleteConfirmId(id);
-  const handleDeleteConfirm = () => {
-    setServices((prev) => prev.filter((s) => s.id !== deleteConfirmId));
-    setDeleteConfirmId(null);
+  const handleDeleteConfirm = async () => {
+    try {
+      const res = await fetch(`/api/services/${deleteConfirmId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Unable to delete service.");
+      setServices((prev) => prev.filter((service) => service.id !== deleteConfirmId));
+      setDeleteConfirmId(null);
+    } catch (err) {
+      setError(err.message);
+    }
   };
-  const handleDeleteCancel = () => setDeleteConfirmId(null);
 
   const isModalOpen = modalMode === "add" || modalMode === "edit";
 
@@ -114,12 +177,17 @@ export default function ServicesPage() {
         </button>
       </div>
 
-      {/* Summary */}
+      {error && (
+        <div className="rounded-xl px-4 py-3 text-sm font-semibold" style={{ color: "#ef4444", backgroundColor: "rgba(239,68,68,0.1)" }}>
+          {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         {[
-          { label: "Total Services", value: services.length, icon: "🛠️" },
-          { label: "Active", value: services.filter((s) => s.active).length, icon: "✅" },
-          { label: "Total Bookings", value: services.reduce((a, s) => a + s.bookings, 0), icon: "📋" },
+          { label: "Total Services", value: services.length, icon: "\u{1F6E0}\uFE0F" },
+          { label: "Active", value: services.filter((s) => s.active).length, icon: "\u2705" },
+          { label: "Inactive", value: services.filter((s) => !s.active).length, icon: "\u23F8\uFE0F" },
         ].map((s) => (
           <div
             key={s.label}
@@ -133,9 +201,10 @@ export default function ServicesPage() {
         ))}
       </div>
 
-      {/* Service Cards */}
       <div className="grid md:grid-cols-2 gap-4">
-        {services.map((s) => (
+        {loading ? (
+          <p className="text-sm" style={{ color: "var(--nav-text-muted)" }}>Loading services...</p>
+        ) : services.map((s) => (
           <div
             key={s.id}
             className="rounded-2xl p-5 transition-all"
@@ -146,16 +215,16 @@ export default function ServicesPage() {
             }}
           >
             <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">{s.icon}</span>
-                <div>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-3xl flex-shrink-0">{s.icon}</span>
+                <div className="min-w-0">
                   <h3 className="font-bold" style={{ color: "var(--foreground)" }}>{s.title}</h3>
                   <p className="text-xs mt-0.5" style={{ color: "var(--nav-text-muted)" }}>{s.desc}</p>
+                  <p className="text-xs mt-1 text-[#2979d4] truncate">{s.link}</p>
                 </div>
               </div>
-              {/* Toggle */}
               <button
-                onClick={() => toggleActive(s.id)}
+                onClick={() => toggleActive(s)}
                 className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 flex-shrink-0"
                 style={{ backgroundColor: s.active ? "#2979d4" : "rgba(150,150,150,0.3)" }}
                 title={s.active ? "Click to deactivate" : "Click to activate"}
@@ -167,32 +236,22 @@ export default function ServicesPage() {
               </button>
             </div>
 
-            <div
-              className="flex items-center gap-6 pt-3"
-              style={{ borderTop: "1px solid var(--border-color)" }}
-            >
-              <div>
-                <p className="text-xs" style={{ color: "var(--nav-text-muted)" }}>Total Bookings</p>
-                <p className="font-bold text-sm" style={{ color: "var(--foreground)" }}>{s.bookings}</p>
-              </div>
-              <div>
-                <p className="text-xs" style={{ color: "var(--nav-text-muted)" }}>Revenue</p>
-                <p className="font-bold text-sm text-[#2979d4]">{s.revenue}</p>
-              </div>
-
-              {/* Status badge */}
-              <div>
-                <span
-                  className="text-xs font-bold px-2 py-1 rounded-full"
-                  style={
-                    s.active
-                      ? { backgroundColor: "rgba(34,197,94,0.15)", color: "#22c55e" }
-                      : { backgroundColor: "rgba(239,68,68,0.15)", color: "#ef4444" }
-                  }
-                >
-                  {s.active ? "Active" : "Inactive"}
+            <div className="flex items-center gap-3 pt-3" style={{ borderTop: "1px solid var(--border-color)" }}>
+              {s.tag && (
+                <span className="text-xs font-bold px-2 py-1 rounded-full" style={{ backgroundColor: "rgba(41,121,212,0.12)", color: "#2979d4" }}>
+                  {s.tag}
                 </span>
-              </div>
+              )}
+              <span
+                className="text-xs font-bold px-2 py-1 rounded-full"
+                style={
+                  s.active
+                    ? { backgroundColor: "rgba(34,197,94,0.15)", color: "#22c55e" }
+                    : { backgroundColor: "rgba(239,68,68,0.15)", color: "#ef4444" }
+                }
+              >
+                {s.active ? "Active" : "Inactive"}
+              </span>
 
               <div className="ml-auto flex gap-2">
                 <button
@@ -203,7 +262,7 @@ export default function ServicesPage() {
                   Edit
                 </button>
                 <button
-                  onClick={() => handleDeleteRequest(s.id)}
+                  onClick={() => setDeleteConfirmId(s.id)}
                   className="text-xs px-3 py-1 rounded-lg font-semibold transition-opacity hover:opacity-80"
                   style={{ backgroundColor: "rgba(239,68,68,0.1)", color: "#ef4444" }}
                 >
@@ -215,35 +274,20 @@ export default function ServicesPage() {
         ))}
       </div>
 
-      {/* ── Add / Edit Modal ── */}
       {isModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl p-6 space-y-5"
-            style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-color)" }}
-          >
-            {/* Header */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
+          <div className="w-full max-w-md rounded-2xl p-6 space-y-5" style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-color)" }}>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-black" style={{ color: "var(--foreground)" }}>
                 {modalMode === "edit" ? "Edit Service" : "Add New Service"}
               </h3>
-              <button
-                onClick={handleClose}
-                className="text-xl leading-none hover:opacity-70 transition-opacity"
-                style={{ color: "var(--nav-text-muted)" }}
-              >
-                ✕
+              <button onClick={handleClose} className="text-xl leading-none hover:opacity-70 transition-opacity" style={{ color: "var(--nav-text-muted)" }}>
+                x
               </button>
             </div>
 
-            {/* Icon Picker */}
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--nav-text-muted)" }}>
-                Choose Icon
-              </label>
+              <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--nav-text-muted)" }}>Choose Icon</label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {EMOJI_OPTIONS.map((emoji) => (
                   <button
@@ -261,104 +305,72 @@ export default function ServicesPage() {
               </div>
             </div>
 
-            {/* Title */}
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--nav-text-muted)" }}>
-                Service Title
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Piano Moving"
-                value={form.title}
-                onChange={(e) => { setForm((f) => ({ ...f, title: e.target.value })); setError(""); }}
-                className="w-full mt-1.5 px-4 py-2.5 rounded-xl text-sm outline-none"
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                  border: "1px solid var(--border-color)",
-                  color: "var(--foreground)",
-                }}
-              />
-            </div>
+            {[
+              { label: "Service Title", key: "title", placeholder: "e.g. Piano Moving" },
+              { label: "Badge", key: "tag", placeholder: "Optional, e.g. New" },
+              { label: "Frontend Link", key: "link", placeholder: "/services/home-shifting or #services" },
+            ].map((field) => (
+              <div key={field.key}>
+                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--nav-text-muted)" }}>{field.label}</label>
+                <input
+                  type="text"
+                  placeholder={field.placeholder}
+                  value={form[field.key]}
+                  onChange={(e) => { setForm((f) => ({ ...f, [field.key]: e.target.value })); setError(""); }}
+                  className="w-full mt-1.5 px-4 py-2.5 rounded-xl text-sm outline-none"
+                  style={{ backgroundColor: "rgba(255,255,255,0.05)", border: "1px solid var(--border-color)", color: "var(--foreground)" }}
+                />
+              </div>
+            ))}
 
-            {/* Description */}
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--nav-text-muted)" }}>
-                Description
-              </label>
+              <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--nav-text-muted)" }}>Description</label>
               <textarea
                 placeholder="Brief description of the service..."
                 value={form.desc}
                 onChange={(e) => { setForm((f) => ({ ...f, desc: e.target.value })); setError(""); }}
                 rows={3}
                 className="w-full mt-1.5 px-4 py-2.5 rounded-xl text-sm outline-none resize-none"
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                  border: "1px solid var(--border-color)",
-                  color: "var(--foreground)",
-                }}
+                style={{ backgroundColor: "rgba(255,255,255,0.05)", border: "1px solid var(--border-color)", color: "var(--foreground)" }}
               />
             </div>
 
-            {/* Error */}
-            {error && (
-              <p className="text-xs font-semibold" style={{ color: "#ef4444" }}>{error}</p>
-            )}
+            {error && <p className="text-xs font-semibold" style={{ color: "#ef4444" }}>{error}</p>}
 
-            {/* Actions */}
             <div className="flex gap-3 pt-1">
               <button
                 onClick={handleClose}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-opacity hover:opacity-80"
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                  border: "1px solid var(--border-color)",
-                  color: "var(--nav-text-muted)",
-                }}
+                style={{ backgroundColor: "rgba(255,255,255,0.05)", border: "1px solid var(--border-color)", color: "var(--nav-text-muted)" }}
               >
                 Cancel
               </button>
               <button
-                onClick={modalMode === "edit" ? handleEditService : handleAddService}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90"
+                onClick={saveService}
+                disabled={saving}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                 style={{ backgroundColor: "#2979d4" }}
               >
-                {modalMode === "edit" ? "Save Changes" : "Add Service"}
+                {saving ? "Saving..." : modalMode === "edit" ? "Save Changes" : "Add Service"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Delete Confirm Modal ── */}
       {deleteConfirmId !== null && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl p-6 space-y-4 text-center"
-            style={{ backgroundColor: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.4)" }}
-          >
-            <div className="text-4xl">🗑️</div>
-            <h3 className="text-lg font-black" style={{ color: "var(--foreground)" }}>
-              Delete Service?
-            </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
+          <div className="w-full max-w-sm rounded-2xl p-6 space-y-4 text-center" style={{ backgroundColor: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.4)" }}>
+            <div className="text-4xl">{"\u{1F5D1}\uFE0F"}</div>
+            <h3 className="text-lg font-black" style={{ color: "var(--foreground)" }}>Delete Service?</h3>
             <p className="text-sm" style={{ color: "var(--nav-text-muted)" }}>
-              Are you sure you want to delete{" "}
-              <span className="font-bold" style={{ color: "var(--foreground)" }}>
-                {services.find((s) => s.id === deleteConfirmId)?.title}
-              </span>
-              ? This action cannot be undone.
+              Are you sure you want to delete <span className="font-bold" style={{ color: "var(--foreground)" }}>{services.find((s) => s.id === deleteConfirmId)?.title}</span>?
             </p>
             <div className="flex gap-3 pt-1">
               <button
-                onClick={handleDeleteCancel}
+                onClick={() => setDeleteConfirmId(null)}
                 className="flex-1 py-2.5 rounded-xl text-sm font-bold transition-opacity hover:opacity-80"
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                  border: "1px solid var(--border-color)",
-                  color: "var(--nav-text-muted)",
-                }}
+                style={{ backgroundColor: "rgba(255,255,255,0.05)", border: "1px solid var(--border-color)", color: "var(--nav-text-muted)" }}
               >
                 Cancel
               </button>

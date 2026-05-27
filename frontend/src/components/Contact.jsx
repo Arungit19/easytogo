@@ -3,18 +3,30 @@ import { useState } from "react";
 
 export default function Contact() {
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     const form = e.target;
     const formData = new FormData(form);
+    setSubmitting(true);
+    setError("");
 
     try {
-      await fetch("https://formsubmit.co/yp36yadav@gmail.com", {
+      const res = await fetch("/api/get-in-touch", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.get("name"),
+          phone: formData.get("phone"),
+          email: formData.get("email"),
+          message: formData.get("message"),
+        }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not submit message.");
 
       setSubmitted(true);
       form.reset();
@@ -22,6 +34,9 @@ export default function Contact() {
       setTimeout(() => setSubmitted(false), 4000);
     } catch (error) {
       console.error("Form submit error:", error);
+      setError(error.message || "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -166,14 +181,21 @@ export default function Contact() {
 
             <button
               type="submit"
+              disabled={submitting}
               className="w-full bg-[#2979d4] hover:bg-[#1d5fb8] text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/20 transition-all duration-200 hover:scale-[1.02]"
+              style={{ opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
             >
-              Send Message
+              {submitting ? "Sending..." : "Send Message"}
             </button>
 
             {submitted && (
               <p className="text-green-500 text-sm text-center mt-2">
                 Your form has been submitted successfully.
+              </p>
+            )}
+            {error && (
+              <p className="text-red-500 text-sm text-center mt-2">
+                {error}
               </p>
             )}
           </form>

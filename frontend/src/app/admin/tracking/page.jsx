@@ -41,6 +41,12 @@ const STAGE_OPTIONS = {
   packing:           ["pending","confirmed","worker_assigned","worker_on_the_way","arrived","in_progress","completed"],
 };
 
+const googleMapsEmbedUrl = (lat, lng) =>
+  `https://maps.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}&z=15&output=embed`;
+
+const googleMapsSearchUrl = (lat, lng) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+
 export default function AdminTrackingPage() {
   const mapRef     = useRef(null);
   const leafletMap = useRef(null);
@@ -58,6 +64,7 @@ export default function AdminTrackingPage() {
   const authHeader = () => ({
     "Content-Type": "application/json",
     Authorization: `Bearer ${localStorage.getItem("adminToken") ?? localStorage.getItem("token")}`,
+    "x-admin-key": process.env.NEXT_PUBLIC_ADMIN_KEY || "homeease_admin_2024",
   });
 
   // ── Fetch all active sessions ────────────────────────────────────────────
@@ -368,6 +375,31 @@ export default function AdminTrackingPage() {
                   );
                 })}
               </div>
+
+              {/* Admin: Update Stage */}
+              {selected.session.current_lat && selected.session.current_lng && (
+                <div className="space-y-2">
+                  <div className="rounded-xl overflow-hidden" style={{ height: 260, border: "1px solid var(--border-color)" }}>
+                    <iframe
+                      title="Worker live location on Google Maps"
+                      src={googleMapsEmbedUrl(selected.session.current_lat, selected.session.current_lng)}
+                      style={{ width: "100%", height: "100%", border: 0 }}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      allowFullScreen
+                    />
+                  </div>
+                  <a
+                    href={googleMapsSearchUrl(selected.session.current_lat, selected.session.current_lng)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex px-3 py-1.5 rounded-lg text-xs font-bold"
+                    style={{ backgroundColor: "rgba(41,121,212,0.1)", color: "#2979d4" }}
+                  >
+                    Open live location in Google Maps
+                  </a>
+                </div>
+              )}
 
               {/* Admin: Update Stage */}
               <div className="space-y-2">

@@ -1,0 +1,52 @@
+export const DEFAULT_SERVICES = [
+  {
+    icon: "\u{1F3D8}\uFE0F",
+    title: "Home Shifting",
+    desc: "Complete house relocation - local or intercity. We manage the entire process from start to finish.",
+    tag: "Most Popular",
+    link: "/services/home-shifting",
+    display_order: 1,
+    active: true,
+  },
+  {
+    icon: "\u{1F3E2}",
+    title: "Office Relocation",
+    desc: "Seamless office shifting with minimal downtime. Your business continuity is our priority.",
+    link: "/services/office-relocation",
+    display_order: 2,
+    active: true,
+  },
+  {
+    icon: "\u{1F4E6}",
+    title: "Packing & Unpacking",
+    desc: "Expert packing using bubble wrap, foam, and custom crates for fragile and valuable items.",
+    link: "/services/packing-unpacking",
+    display_order: 3,
+    active: true,
+  },
+  {
+    icon: "\u{1F697}",
+    title: "Vehicle Transport",
+    desc: "Safe and insured car transport via enclosed carriers across all major routes.",
+    link: "/services/vehicle-transport",
+    display_order: 4,
+    active: true,
+  },
+  {
+    icon: "\u{1F3EC}",
+    title: "Storage Solutions",
+    desc: "Secure, climate-controlled storage facilities for short-term and long-term needs.",
+    link: "/services/storage",
+    display_order: 5,
+    active: false,
+  },
+  {
+    icon: "\u{1F9F9}",
+    title: "Post-Move Cleaning",
+    desc: "Deep cleaning services for your old or new home after the move is complete.",
+    link: "/services/cleaning",
+    display_order: 6,
+    active: true,
+  },
+];
+

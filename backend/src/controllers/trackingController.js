@@ -1,5 +1,5 @@
 // src/controllers/trackingController.js
-const pool = require("../config/db");
+const { pool } = require("../config/db");
 
 // ─── Stage definitions per service type ───────────────────────────────────────
 const STAGES = {
@@ -216,8 +216,17 @@ exports.updateLocation = async (req, res) => {
     const { id } = req.params; // tracking_session id
     const { lat, lng, address, eta_minutes } = req.body;
 
-    if (!lat || !lng)
+    if (lat === undefined || lng === undefined || lat === null || lng === null)
       return res.status(400).json({ message: "lat and lng required." });
+
+    const session = await pool.query(
+      `SELECT worker_id FROM tracking_sessions WHERE id=$1`,
+      [id]
+    );
+    if (session.rowCount === 0)
+      return res.status(404).json({ message: "Session not found." });
+    if (String(session.rows[0].worker_id) !== String(req.workerId))
+      return res.status(403).json({ message: "This tracking session belongs to another worker." });
 
     await pool.query(
       `UPDATE tracking_sessions

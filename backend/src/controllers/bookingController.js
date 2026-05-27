@@ -54,6 +54,7 @@ const getAvailableBookingsByService = async (req, res, serviceName) => {
   const SERVICE_CONFIG = {
     "Home Shifting": {
       table:    "home_shifting_bookings",
+      key:      "home_shifting",
       from_col: "from_place",
       to_col:   "to_place",
       time_col: "NULL",
@@ -61,6 +62,7 @@ const getAvailableBookingsByService = async (req, res, serviceName) => {
     },
     "Cleaning": {
       table:    "cleaning_bookings",
+      key:      "cleaning",
       from_col: "from_location",
       to_col:   "to_location",
       time_col: "preferred_time",
@@ -68,6 +70,7 @@ const getAvailableBookingsByService = async (req, res, serviceName) => {
     },
     "Office Relocation": {
       table:    "office_relocation_requests",
+      key:      "office_relocation",
       from_col: "from_location",
       to_col:   "to_location",
       time_col: "NULL",
@@ -75,6 +78,7 @@ const getAvailableBookingsByService = async (req, res, serviceName) => {
     },
     "Packing & Unpacking": {
       table:    "packing_requests",
+      key:      "packing",
       from_col: "address",
       to_col:   "city",
       time_col: "preferred_date",
@@ -82,6 +86,7 @@ const getAvailableBookingsByService = async (req, res, serviceName) => {
     },
     "Storage": {
       table:    "storage_bookings",
+      key:      "storage",
       from_col: "address",
       to_col:   "city",
       time_col: "preferred_date",
@@ -89,6 +94,7 @@ const getAvailableBookingsByService = async (req, res, serviceName) => {
     },
     "Vehicle Transport": {
       table:    "vehicle_transport_requests",
+      key:      "vehicle_transport",
       from_col: "from_location",
       to_col:   "to_location",
       time_col: "NULL",
@@ -101,12 +107,12 @@ const getAvailableBookingsByService = async (req, res, serviceName) => {
     return res.status(400).json({ error: `Unknown service: ${serviceName}` });
   }
 
-  const { table, from_col, to_col, time_col, type_col } = config;
+  const { table, key, from_col, to_col, time_col, type_col } = config;
 
   try {
     const { rows } = await pool.query(`
       SELECT
-        id,
+        ${table}.id,
         $1                                AS service,
         COALESCE(city, '')                AS city,
         COALESCE(${from_col}, '')         AS from_place,
@@ -114,15 +120,20 @@ const getAvailableBookingsByService = async (req, res, serviceName) => {
         COALESCE(customer_name, '')       AS customer_name,
         COALESCE(customer_phone, '')      AS customer_phone,
         COALESCE(customer_email, '')      AS customer_email,
-        COALESCE(status, 'pending')       AS status,
-        worker_id,
+        COALESCE(${table}.status, 'pending') AS status,
+        ${table}.worker_id,
         COALESCE(${time_col}::TEXT, '')   AS preferred_time,
         COALESCE(${type_col}::TEXT, '')   AS service_type,
-        created_at
+        $2                                AS service_key,
+        ts.id                             AS tracking_session_id,
+        ${table}.created_at
       FROM ${table}
-      ORDER BY created_at DESC
+      LEFT JOIN tracking_sessions ts
+        ON ts.booking_id = ${table}.id
+       AND ts.service_type = $2
+      ORDER BY ${table}.created_at DESC
       LIMIT 200
-    `, [serviceName]);
+    `, [serviceName, key]);
 
     // worker_id normalize — null / 0 / "0" sab null ho jayein
     // taaki frontend ka String comparison reliable rahe

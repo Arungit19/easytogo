@@ -10,6 +10,7 @@ const navItems = [
   { href: "/admin/customers",  label: "Customers", icon: "👥" },
   { href: "/admin/workers",    label: "Workers",   icon: "👷" },
   { href: "/admin/Quotes",     label: "Quotes",    icon: "💬" },
+  { href: "/admin/get-in-touch", label: "Get In Touch", icon: "📨" },
   { href: "/admin/payments",   label: "Payments",  icon: "💳" },
   { href: "/admin/services",   label: "Services",  icon: "🛠️" },
   { href: "/admin/tracking",   label: "Tracking",  icon: "🗺️" }, // ← NEW

@@ -28,7 +28,9 @@ async function safeFetch(url) {
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return Array.isArray(data) ? data : [];
+    return Array.isArray(data) ? data
+         : Array.isArray(data.messages) ? data.messages
+         : [];
   } catch {
     return [];
   }
@@ -53,6 +55,7 @@ export default function AdminDashboard() {
   const [recentBookings, setRecentBookings]   = useState([]);
   const [recentCustomers, setRecentCustomers] = useState([]);
   const [recentQuotes, setRecentQuotes]       = useState([]);
+  const [recentMessages, setRecentMessages]   = useState([]);
   const [loading, setLoading]                 = useState(true);
   const [fetchError, setFetchError]           = useState(false);
 
@@ -61,7 +64,7 @@ export default function AdminDashboard() {
     setLoading(true);
     setFetchError(false);
     try {
-      const [home, cleaning, office, packing, storage, vehicle, customers, quotes] =
+      const [home, cleaning, office, packing, storage, vehicle, customers, quotes, messages] =
         await Promise.all([
           safeFetch("/api/home-shifting"),
           safeFetch("/api/cleaning-booking"),
@@ -71,6 +74,7 @@ export default function AdminDashboard() {
           safeFetch("/api/vehicle-transport"),
           safeFetch("/api/customers"),
           safeFetch("/api/quotes"),
+          safeFetch("/api/get-in-touch"),
         ]);
 
       // Build a status lookup from the quotes table (source of truth for status changes)
@@ -138,6 +142,7 @@ export default function AdminDashboard() {
         { label: "Pending",          value: pending,          icon: "⏳", change: "needs action",  up: false },
         { label: "Completed",        value: completed,        icon: "✅", change: "done",           up: true  },
         { label: "Quotes",           value: quotes.length,    icon: "💬", change: "all time",      up: true  },
+        { label: "Get In Touch",     value: messages.length,  icon: "Inbox", change: "messages",     up: true  },
         { label: "Pending Quotes",   value: pendingQuotes,    icon: "🕐", change: "needs action",  up: false },
         { label: "Today's Bookings", value: today,            icon: "📅", change: "today",          up: true  },
       ]);
@@ -150,6 +155,11 @@ export default function AdminDashboard() {
       );
       setRecentQuotes(
         [...quotes]
+          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          .slice(0, 5)
+      );
+      setRecentMessages(
+        [...messages]
           .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
           .slice(0, 5)
       );
@@ -194,7 +204,7 @@ export default function AdminDashboard() {
             Welcome back, Admin 👋
           </h2>
           <p className="text-sm mt-1" style={{ color: "var(--nav-text-muted)" }}>
-            Here's what's happening with ShiftEase today.
+            Here&apos;s what&apos;s happening with ShiftEase today.
           </p>
         </div>
         <button
@@ -537,6 +547,72 @@ export default function AdminDashboard() {
                 </div>
               );
             })
+          )}
+        </div>
+
+        {/* Get In Touch */}
+        <div
+          className="rounded-2xl overflow-hidden"
+          style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-color)" }}
+        >
+          <div
+            className="flex items-center justify-between px-6 py-4"
+            style={{ borderBottom: "1px solid var(--border-color)" }}
+          >
+            <h3 className="font-bold text-base" style={{ color: "var(--foreground)" }}>
+              Recent Get In Touch
+            </h3>
+            <a
+              href="/admin/get-in-touch"
+              className="text-xs font-semibold text-[#2979d4] hover:underline"
+            >
+              View All →
+            </a>
+          </div>
+          {loading ? (
+            <div className="px-6 py-10 text-center text-xs" style={{ color: "var(--nav-text-muted)" }}>
+              Loading...
+            </div>
+          ) : recentMessages.length === 0 ? (
+            <div className="px-6 py-10 text-center text-xs" style={{ color: "var(--nav-text-muted)" }}>
+              No contact messages yet.
+            </div>
+          ) : (
+            recentMessages.map((m) => (
+              <div
+                key={m.id}
+                className="px-6 py-3"
+                style={{ borderBottom: "1px solid var(--border-color)" }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.backgroundColor = "rgba(41,121,212,0.05)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.backgroundColor = "transparent")
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>
+                      {m.name}
+                    </p>
+                    <p className="text-xs truncate" style={{ color: "var(--nav-text-muted)" }}>
+                      {m.email} {m.phone ? `· ${m.phone}` : ""}
+                    </p>
+                    <p className="text-xs mt-1 line-clamp-2" style={{ color: "var(--nav-text-muted)" }}>
+                      {m.message}
+                    </p>
+                  </div>
+                  <span className="text-[10px] whitespace-nowrap" style={{ color: "var(--nav-text-muted)" }}>
+                    {m.created_at
+                      ? new Date(m.created_at).toLocaleDateString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                        })
+                      : "-"}
+                  </span>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>

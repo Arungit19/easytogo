@@ -9,6 +9,7 @@ import {
   WifiOff, Wifi, User, Shield, CreditCard, FileText,
   Upload, AlertCircle, Loader2, Trash2, Camera, ChevronDown,
 } from "lucide-react";
+import WorkerLocationSender from "../../../components/WorkerLocationSender";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const API = `${BASE_URL}/api`;
@@ -461,7 +462,7 @@ function OfflineBanner({ onGoOnline }) {
           <WifiOff size={15} color="#f87171" />
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#f87171", marginBottom: 2 }}>You're Offline</div>
+          <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#f87171", marginBottom: 2 }}>You&apos;re Offline</div>
           <div style={{ fontSize: "0.68rem", color: "rgba(255,255,255,0.3)", lineHeight: 1.4, whiteSpace: "normal" }}>Go online to receive new job alerts.</div>
         </div>
       </div>
@@ -874,9 +875,12 @@ function BookingCard({ booking, onAccept, onDecline, workerId }) {
           )}
 
           {isMyBooking && (
+            <>
             <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.2)", textAlign: "center", fontSize: "0.75rem", color: "#10b981", fontWeight: 600 }}>
               ✓ You accepted this — contact the customer to proceed.
             </div>
+              <WorkerLocationSender sessionId={booking.tracking_session_id} autoStart />
+            </>
           )}
 
           {isTakenByOther && (
@@ -1088,6 +1092,19 @@ export default function WorkerDashboard() {
         body: JSON.stringify(payload),
       });
       if (r.ok) {
+        const data = await r.json().catch(() => ({}));
+        setBookings(prev => prev.map(b =>
+          b.id === booking.id && b.service === booking.service
+            ? {
+                ...b,
+                status: "confirmed",
+                worker_id: wid,
+                service_key: data.trackingServiceType || b.service_key,
+                tracking_session_id: data.trackingSessionId || data.trackingSession?.id || b.tracking_session_id,
+                tracking_url: data.trackingUrl || b.tracking_url,
+              }
+            : b
+        ));
         _onAcceptSuccess(booking, wkr);
         return { success: true };
       }

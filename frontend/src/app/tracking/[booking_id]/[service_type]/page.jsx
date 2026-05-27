@@ -25,6 +25,12 @@ const SERVICE_LABELS = {
   packing:            "Packing & Unpacking",
 };
 
+const googleMapsEmbedUrl = (lat, lng) =>
+  `https://maps.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}&z=15&output=embed`;
+
+const googleMapsDirectionsUrl = (lat, lng) =>
+  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+
 export default function UserTrackingPage() {
   // URL: /tracking/[booking_id]/[service_type]
   const { booking_id, service_type } = useParams();
@@ -385,7 +391,18 @@ export default function UserTrackingPage() {
 
         {/* ── Map ── */}
         <div className="flex-1 relative" style={{ minHeight: "400px" }}>
-          <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: "400px" }} />
+          {s.current_lat && s.current_lng ? (
+            <iframe
+              title="Worker live location on Google Maps"
+              src={googleMapsEmbedUrl(s.current_lat, s.current_lng)}
+              style={{ width: "100%", height: "100%", minHeight: "400px", border: 0 }}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+          ) : (
+            <div ref={mapRef} style={{ width: "100%", height: "100%", minHeight: "400px" }} />
+          )}
 
           {/* No location fallback */}
           {!s.current_lat && (
@@ -414,6 +431,22 @@ export default function UserTrackingPage() {
             }}>
             🔄 Refresh
           </button>
+          {s.current_lat && s.current_lng && (
+            <a
+              href={googleMapsDirectionsUrl(s.current_lat, s.current_lng)}
+              target="_blank"
+              rel="noreferrer"
+              className="absolute top-14 right-3 z-[1000] px-3 py-2 rounded-xl text-xs font-bold"
+              style={{
+                backgroundColor: "#fff",
+                border: "1px solid rgba(0,0,0,0.12)",
+                color: "#1f2937",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+              }}
+            >
+              Open in Google Maps
+            </a>
+          )}
         </div>
       </div>
     </div>

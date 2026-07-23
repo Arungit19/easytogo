@@ -1,1 +1,9 @@
-﻿.env.txt
+.env
+.env.*
+!.env.example
+.env.txt
+node_modules/
+.next/
+dist/
+build/
+npm-debug.log*

@@ -1,0 +1,8 @@
+
+> house-shifting@1.0.0 backend:start
+> node server.js
+
+EMAIL_USER: arunkumar19dec@gmail.com
+EMAIL_PASS: Loaded ✓
+✅ DB ready  |  Admin → admin@123 / admin123
+🚀 Server running on http://localhost:5000
